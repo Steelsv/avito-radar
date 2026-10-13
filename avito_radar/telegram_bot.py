@@ -427,6 +427,9 @@ class AvitoTelegramBot:
 
         # Commands
         if text in ("/start", "/menu", "меню", "старт"):
+            if session.last_menu_message_id:
+                self.delete_message(chat_id, session.last_menu_message_id)
+                session.last_menu_message_id = None
             self.send_main_menu(chat_id)
             return
 
@@ -485,7 +488,15 @@ class AvitoTelegramBot:
             self.process_create_search(chat_id, target_url, custom_name=c_name)
             return
 
-        # Fallback: re-render main menu
+        # Fallback: if user typed arbitrary text in chat (like "rx6700 xt"), treat it as a search query!
+        if text:
+            session.temp_query = text
+            session.temp_category_path = ""
+            session.temp_pmin = 0
+            session.state = "IDLE"
+            self.send_city_selection(chat_id)
+            return
+
         self.send_main_menu(chat_id)
 
     def handle_callback_query(self, query: dict[str, Any]) -> None:
