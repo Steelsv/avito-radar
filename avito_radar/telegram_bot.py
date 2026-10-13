@@ -856,13 +856,72 @@ def start_healthcheck_server() -> None:
                 except Exception as exc:
                     logger.warning("Error generating api bundle: %s", exc)
 
-            if path in ("/api/health", "/healthz"):
+            if path in ("/health", "/api/health", "/healthz"):
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
-                self.wfile.write(b'{"status":"running","bot":"Avito Radar"}\n')
+                self.wfile.write(b'{"status":"ok","service":"avitoradar-backend"}\n')
                 return
+
+            if path == "/api/searches":
+                try:
+                    searches = [
+                        {
+                            "id": s.name,
+                            "query": s.title,
+                            "city": s.city,
+                            "minPrice": s.min_price or 0,
+                            "isActive": True
+                        }
+                        for s in list_searches()
+                    ]
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": True, "count": len(searches), "searches": searches}, ensure_ascii=False).encode("utf-8"))
+                    return
+                except Exception as exc:
+                    logger.warning("Error getting searches: %s", exc)
+
+            if path == "/api/lots":
+                try:
+                    bundle = generate_api_bundle()
+                    all_lots = []
+                    for s_id, s_data in bundle.items():
+                        for it in s_data.get("items", []):
+                            all_lots.append({
+                                "id": str(it["id"]),
+                                "searchId": s_id,
+                                "avitoUrl": it["url"],
+                                "title": it["title"],
+                                "price": it["price"],
+                                "marketPrice": it.get("market_price", 0),
+                                "discount": it.get("market_diff_percent", 0),
+                                "seller": {
+                                    "name": it.get("seller_name", "Частник"),
+                                    "type": "business" if "Магазин" in it.get("seller_type", "") else "private",
+                                    "rating": it.get("seller_rating"),
+                                    "location": it.get("address") or it.get("city", "Челябинск")
+                                },
+                                "publishedText": it.get("published_text", "сегодня"),
+                                "images": it.get("images", []),
+                                "description": it.get("description", ""),
+                                "tags": it.get("tags", []),
+                                "badges": it.get("badges", []),
+                                "isComboListing": it.get("is_combo_listing", False),
+                                "realPriceInDesc": it.get("real_price_in_desc"),
+                                "isDismissed": False
+                            })
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": True, "count": len(all_lots), "lots": all_lots}, ensure_ascii=False).encode("utf-8"))
+                    return
+                except Exception as exc:
+                    logger.warning("Error getting lots: %s", exc)
 
             self.send_response(404)
             self.end_headers()
@@ -967,6 +1026,17 @@ def start_healthcheck_server() -> None:
                     self.end_headers()
                     self.wfile.write(json.dumps({"ok": False, "error": str(exc)}).encode("utf-8"))
                     return
+
+            if "/dismiss" in path:
+                # POST /api/lots/<id>/dismiss
+                parts = path.strip("/").split("/")
+                lot_id = parts[2] if len(parts) >= 3 else ""
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "id": lot_id, "isDismissed": True}).encode("utf-8"))
+                return
 
             self.send_response(404)
             self.end_headers()

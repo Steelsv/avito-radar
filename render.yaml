@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: avitoradar-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node backend/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: MINI_APP_URL
+        value: https://steelsv.github.io/avito-radar/
+    autoDeploy: true
+
+  - type: web
+    name: avitoradar-frontend
+    env: static
+    plan: free
+    buildCommand: ""
+    publishPath: frontend
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    autoDeploy: true

@@ -11,3 +11,7 @@ output/
 
 # Logs & temp
 *.log
+
+# Node.js
+node_modules/
+.env
