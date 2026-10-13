@@ -255,20 +255,11 @@ class AvitoTelegramBot:
     # --- Menus and Keyboards ---
 
     def main_menu_keyboard(self) -> dict[str, Any]:
-        watch_btn = "🟢 Мониторинг: ВКЛ" if self.monitoring_active else "🔴 Мониторинг: ВЫКЛ"
         miniapp_url = os.environ.get("MINI_APP_URL", "https://steelsv.github.io/avito-radar/")
         return {
             "inline_keyboard": [
                 [
                     {"text": "⚡ ОТКРЫТЬ ТЕРМИНАЛ (MINI APP)", "web_app": {"url": miniapp_url}},
-                ],
-                [
-                    {"text": "➕ Добавить поиск", "callback_data": "menu_add"},
-                    {"text": "📋 Мои поиски", "callback_data": "menu_list"},
-                ],
-                [
-                    {"text": watch_btn, "callback_data": "menu_toggle_watch"},
-                    {"text": "⚙️ Настройки", "callback_data": "menu_settings"},
                 ],
             ]
         }
@@ -276,19 +267,19 @@ class AvitoTelegramBot:
     def send_main_menu(self, chat_id: int, message_id: int | None = None) -> None:
         session = self.get_session(chat_id)
         session.state = "IDLE"
-        watch_status = "🟢 ВКЛ" if self.monitoring_active else "🔴 ВЫКЛ"
+        watch_status = "🟢 ВКЛ (24/7)" if self.monitoring_active else "🔴 ВЫКЛ"
         searches = list_searches()
         text = (
-            "👁️ <b>СМОТРЯЩИЙ ЗА АВИТО // RADAR 2.0</b>\n\n"
-            "⚡ <b>Интерактивный терминал готов к работе!</b>\n"
-            "В приложении доступна вся аналитика рынка без необходимости скачивать Excel:\n"
-            "• 🎴 <b>Карточки</b> с подсветкой топ-выгоды и цен\n"
-            "• 📊 <b>Режим таблицы</b> (полная замена Excel на экране iPhone)\n"
-            "• 🛡 <b>Фильтр кликбейтов</b> и сборных лотов\n"
-            "• ★ <b>Избранное</b> и быстрый переход на Авито\n\n"
+            "👁️ <b>СМОТРЯЩИЙ ЗА АВИТО // RADAR TERMINAL</b>\n\n"
+            "⚡ <b>Все управление перенесено в Mini App:</b>\n"
+            "• 🎯 Создание любого нового поиска и запуск радара\n"
+            "• 🗑 Удаление существующих поисков в 1 клик\n"
+            "• 🎴 Карточки с фильтрацией дефектов и байт-цен\n"
+            "• 📊 Встроенная таблица (полная замена Excel)\n\n"
             f"📡 Статус мониторинга: <b>{watch_status}</b>\n"
-            f"🎯 Активных поисков: <b>{len(searches)}</b>\n\n"
-            "Нажмите кнопку ниже, чтобы открыть терминал 👇"
+            f"🎯 Активных радаров: <b>{len(searches)}</b>\n\n"
+            "<i>В этот чат приходят только карточки новых выгодных объявлений.</i>\n\n"
+            "Нажмите кнопку ниже для перехода в терминал 👇"
         )
         self.render_menu(chat_id, text, self.main_menu_keyboard(), message_id=message_id)
 
@@ -456,19 +447,11 @@ class AvitoTelegramBot:
 
         session = self.get_session(chat_id)
 
-        # Delete user's incoming message so chat history stays clean
+        # Delete user's incoming message so chat history stays completely clean
         if msg_id:
             self.delete_message(chat_id, msg_id)
 
-        # Commands
-        if text in ("/start", "/menu", "меню", "старт"):
-            if session.last_menu_message_id:
-                self.delete_message(chat_id, session.last_menu_message_id)
-                session.last_menu_message_id = None
-            self.send_main_menu(chat_id)
-            return
-
-        # Direct Avito link detection
+        # Direct Avito link detection (support quick adding via link if user pastes one)
         if "avito.ru" in text:
             match = re.search(r"https?://[^\s]+avito\.ru[^\s]*", text)
             if match:
@@ -476,61 +459,12 @@ class AvitoTelegramBot:
                 self.process_create_search(chat_id, match.group(0))
                 return
 
-        # State machine
-        if session.state.startswith("WAIT_PMIN_"):
-            search_name = session.state[len("WAIT_PMIN_"):]
-            session.state = "IDLE"
-            s = load_search(search_name)
-            if s:
-                digits = re.sub(r"\D", "", text)
-                pmin_val = int(digits) if digits else 0
-                if pmin_val > 0:
-                    s.min_price = pmin_val
-                    s.params["pmin"] = str(pmin_val)
-                else:
-                    s.min_price = None
-                    s.params.pop("pmin", None)
-                save_search(s)
-            self.send_searches_list(chat_id)
-            return
-
-        if session.state == "WAIT_URL":
-            session.state = "IDLE"
-            self.process_create_search(chat_id, text)
-            return
-
-        if session.state == "WAIT_CUSTOM_QUERY":
-            session.temp_query = text
-            session.temp_category_path = ""
-            session.temp_pmin = 0
-            session.state = "IDLE"
-            self.send_city_selection(chat_id)
-            return
-
-        if session.state == "WAIT_CUSTOM_CITY":
-            session.temp_city_name = text
-            city_slug = transliterate(text).replace(" ", "_")
-            encoded_q = urllib.parse.quote(session.temp_query)
-            if session.temp_category_path:
-                target_url = f"https://www.avito.ru/{city_slug}/{session.temp_category_path}?q={encoded_q}"
-            else:
-                target_url = f"https://www.avito.ru/{city_slug}?q={encoded_q}"
-            if session.temp_pmin:
-                target_url += f"&pmin={session.temp_pmin}"
-            clean_q = transliterate(session.temp_query).replace(" ", "_")
-            c_name = re.sub(r"[^a-z0-9_-]+", "_", f"{clean_q}_{city_slug}").strip("_")
-            session.state = "IDLE"
-            self.process_create_search(chat_id, target_url, custom_name=c_name)
-            return
-
-        # Fallback: if user typed arbitrary text in chat (like "rx6700 xt"), treat it as a search query!
-        if text:
-            session.temp_query = text
-            session.temp_category_path = ""
-            session.temp_pmin = 0
-            session.state = "IDLE"
-            self.send_city_selection(chat_id)
-            return
+        # Always maintain a single clean terminal menu card
+        if session.last_menu_message_id:
+            self.delete_message(chat_id, session.last_menu_message_id)
+            session.last_menu_message_id = None
+        self.send_main_menu(chat_id)
+        return
 
         self.send_main_menu(chat_id)
 
@@ -935,7 +869,7 @@ def start_healthcheck_server() -> None:
 
         def do_POST(self) -> None:
             path = self.path.split("?")[0]
-            if path == "/api/searches":
+            if path in ("/api/searches", "/api/searches/create"):
                 try:
                     content_length = int(self.headers.get("Content-Length", 0))
                     body = self.rfile.read(content_length).decode("utf-8")
@@ -943,6 +877,7 @@ def start_healthcheck_server() -> None:
                     query = req_data.get("query", "").strip()
                     city = req_data.get("city", "chelyabinsk").strip()
                     min_price = int(req_data.get("min_price") or 0)
+                    c_name = ""
                     if query:
                         city_slug = transliterate(city).replace(" ", "_")
                         clean_q = transliterate(query).replace(" ", "_")
@@ -952,15 +887,80 @@ def start_healthcheck_server() -> None:
                         if min_price > 0:
                             target_url += f"&pmin={min_price}"
                         cl = AvitoClient()
-                        create_search_from_url(cl, target_url, custom_name=c_name)
+                        s_rec = create_search_from_url(cl, target_url, custom_name=c_name)
+
+                        # Trigger background scan of first page immediately
+                        def _bg_scan(rec: SearchRecord) -> None:
+                            try:
+                                client = AvitoClient()
+                                scan_search(rec, client=client, max_pages=1)
+                                logger.info("Initial scan completed for %s", rec.name)
+                            except Exception as e:
+                                logger.warning("Bg scan error for %s: %s", rec.name, e)
+
+                        threading.Thread(target=_bg_scan, args=(s_rec,), daemon=True).start()
+
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
-                    self.wfile.write(b'{"ok": true}\n')
+                    self.wfile.write(json.dumps({"ok": True, "name": c_name}).encode("utf-8"))
                     return
                 except Exception as exc:
                     logger.warning("Error creating search from API: %s", exc)
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"ok": False, "error": str(exc)}).encode("utf-8"))
+                    return
+
+            if path in ("/api/searches/delete", "/api/delete"):
+                try:
+                    content_length = int(self.headers.get("Content-Length", 0))
+                    body = self.rfile.read(content_length).decode("utf-8")
+                    req_data = json.loads(body)
+                    name = req_data.get("name", "").strip()
+                    success = False
+                    if name:
+                        success = delete_search(name)
+                        logger.info("Search '%s' deleted via API (success=%s)", name, success)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"ok": True, "deleted": name, "success": success}).encode("utf-8"))
+                    return
+                except Exception as exc:
+                    logger.warning("Error deleting search via API: %s", exc)
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"ok": False, "error": str(exc)}).encode("utf-8"))
+                    return
+
+            if path in ("/api/searches/scan", "/api/scan"):
+                try:
+                    content_length = int(self.headers.get("Content-Length", 0))
+                    body = self.rfile.read(content_length).decode("utf-8")
+                    req_data = json.loads(body)
+                    name = req_data.get("name", "").strip()
+                    count = 0
+                    if name:
+                        s_rec = load_search(name)
+                        if s_rec:
+                            cl = AvitoClient()
+                            count = scan_search(s_rec, client=cl, max_pages=1)
+                    bundle_data = generate_api_bundle()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"ok": True, "count": count, "bundle": bundle_data}).encode("utf-8"))
+                    return
+                except Exception as exc:
+                    logger.warning("Error scanning search via API: %s", exc)
                     self.send_response(500)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.send_header("Access-Control-Allow-Origin", "*")
