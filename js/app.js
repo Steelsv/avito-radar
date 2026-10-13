@@ -115,7 +115,7 @@ async function loadData() {
 
 function populateSearchSelector() {
   if (!DOM.searchSelector) return;
-  DOM.searchSelector.innerHTML = '<option value="all">🔍 Все радары (общий поток)</option>';
+  DOM.searchSelector.innerHTML = '<option value="all">Все радары (общий поток)</option>';
 
   State.searches.forEach(s => {
     const opt = document.createElement('option');
@@ -286,16 +286,20 @@ function createLotCard(lot) {
   const mediaHtml = photoUrl ? `
     <div class="card-media-preview">
       <img src="${photoUrl}" alt="${escapeHtml(lot.title)}" loading="lazy" class="card-media-img">
-      <button class="card-fav-btn ${isFav ? 'active' : ''}" onclick="window.app.toggleFav(event, '${lot.id}')" title="В избранное">★</button>
+      <button class="card-fav-btn ${isFav ? 'active' : ''}" onclick="window.app.toggleFav(event, '${lot.id}')" title="В избранное">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+      </button>
     </div>
   ` : '';
 
   // Deal badge or Combo alert
   let badgeHtml = '';
   if (isDeal) {
-    badgeHtml = `<div class="deal-badge">🔥 ВЫГОДА ${lot.discount}%</div>`;
+    badgeHtml = `<div class="deal-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg> ВЫГОДА ${lot.discount}%</div>`;
   } else if (lot.isComboListing) {
-    badgeHtml = `<div class="deal-badge" style="background: rgba(245, 158, 11, 0.15); color: #F59E0B; border-color: rgba(245, 158, 11, 0.3)">⚠️ СБОРНЫЙ ЛОТ</div>`;
+    badgeHtml = `<div class="deal-badge" style="background: rgba(245, 158, 11, 0.15); color: #F59E0B; border-color: rgba(245, 158, 11, 0.3)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> СБОРНЫЙ ЛОТ</div>`;
   } else {
     badgeHtml = `<span class="caption font-mono">${lot.publishedText || 'сегодня'}</span>`;
   }
@@ -308,7 +312,7 @@ function createLotCard(lot) {
   // Vanish button: X
   const vanishHtml = lot.isDismissed ? `
     <button class="btn-vanish" onclick="window.app.restoreLot(event, '${lot.id}')" title="Вернуть объявление" style="color: var(--success)">
-      ↩
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
     </button>
   ` : `
     <button class="btn-vanish" onclick="window.app.vanishLot(event, '${lot.id}')" title="Скрыть объявление (Vanish)">
@@ -335,7 +339,8 @@ function createLotCard(lot) {
 
       ${lot.isComboListing ? `
         <div class="combo-warning-banner">
-          <span>⚠️ В описании целевой товар: <b>${lot.realPriceInDesc ? lot.realPriceInDesc.toLocaleString('ru-RU') + ' ₽' : 'см. текст'}</b></span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: middle;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>В описании целевой товар: <b>${lot.realPriceInDesc ? lot.realPriceInDesc.toLocaleString('ru-RU') + ' ₽' : 'см. текст'}</b></span>
         </div>
       ` : ''}
 
@@ -348,8 +353,8 @@ function createLotCard(lot) {
 
     <div>
       <div class="card-meta-row">
-        <span>${lot.seller.type === 'private' ? '👤 Частник' : '🏬 Магазин'} ${lot.seller.rating ? '★ ' + lot.seller.rating : ''}</span>
-        <span>📍 ${escapeHtml(lot.seller.location)}</span>
+        <span>${lot.seller.type === 'private' ? 'Частник' : 'Магазин'} ${lot.seller.rating ? '• ' + lot.seller.rating : ''}</span>
+        <span>${escapeHtml(lot.seller.location)}</span>
       </div>
 
       <button class="btn-cta" onclick="window.app.openDetails(event, '${lot.id}')">
@@ -448,7 +453,13 @@ function renderTableView(lots) {
       </td>
       <td style="text-align: right; white-space: nowrap;">
         <button class="btn-vanish" onclick="window.app.vanishLot(event, '${lot.id}')" title="Скрыть">✕</button>
-        <button class="btn-vanish" onclick="window.app.openAvito(event, '${lot.avitoUrl}')" title="Открыть на Авито" style="color: var(--primary);">↗</button>
+        <button class="btn-vanish" onclick="window.app.openAvito(event, '${lot.avitoUrl}')" title="Открыть на Авито" style="color: var(--primary);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+        </button>
       </td>
     `;
 
@@ -471,7 +482,9 @@ function renderSearchesManager() {
   if (State.searches.length === 0) {
     DOM.searchesList.innerHTML = `
       <div style="text-align: center; padding: 40px 20px; background: var(--surface-card); border-radius: 16px; border: 1px solid var(--border-subtle);">
-        <div style="font-size: 32px; margin-bottom: 12px;">🎯</div>
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 12px; margin-inline: auto;">
+          <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+        </svg>
         <div class="h3" style="margin-bottom: 6px;">Нет активных радаров</div>
         <p class="caption" style="margin-bottom: 16px;">Создайте первый поиск, чтобы запустить круглосуточный мониторинг Авито.</p>
         <button class="btn-cta" onclick="window.app.openNewSearchModal()" style="max-width: 240px; margin: 0 auto;">+ Создать поиск</button>
@@ -501,22 +514,27 @@ function renderSearchesManager() {
             ${isActive ? '<span class="brand-badge" style="background: var(--success-bg); color: var(--success); border-color: rgba(16,185,129,0.3)">АКТИВЕН</span>' : ''}
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 11px;" class="font-mono">
-            <span style="padding: 2px 8px; border-radius: 6px; background: #0E0E11; border: 1px solid var(--border-subtle);">📍 ${escapeHtml(s.city || 'Челябинск')}</span>
-            <span style="padding: 2px 8px; border-radius: 6px; background: #0E0E11; border: 1px solid var(--border-subtle);">📦 ${lotCount} лотов</span>
-            <span style="padding: 2px 8px; border-radius: 6px; background: #0E0E11; border: 1px solid var(--border-subtle);">💰 ${minPriceText}</span>
+            <span style="padding: 2px 8px; border-radius: 6px; background: #0E0E11; border: 1px solid var(--border-subtle);">${escapeHtml(s.city || 'Челябинск')}</span>
+            <span style="padding: 2px 8px; border-radius: 6px; background: #0E0E11; border: 1px solid var(--border-subtle);">${lotCount} лотов</span>
+            <span style="padding: 2px 8px; border-radius: 6px; background: #0E0E11; border: 1px solid var(--border-subtle);">${minPriceText}</span>
           </div>
         </div>
       </div>
 
       <div style="display: flex; gap: 8px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px;">
         <button class="btn-cta" onclick="window.app.selectSearch('${s.id}')" style="height: 36px; font-size: 12px; flex: 2; background: ${isActive ? 'var(--surface-hover)' : 'var(--primary-gradient)'};">
-          ${isActive ? '👀 Просмотр лотов' : '⚡ Выбрать этот радар'}
+          ${isActive ? 'Просмотр лотов' : 'Выбрать этот радар'}
         </button>
         <button class="filter-chip" onclick="window.app.scanSearch('${s.id}')" style="height: 36px; flex: 1; justify-content: center;" title="Сканировать">
-          🔄 Скан
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/>
+          </svg>
+          Скан
         </button>
-        <button class="filter-chip" onclick="window.app.promptDelete('${s.id}', '${escapeHtml(s.query)}')" style="height: 36px; color: var(--danger); border-color: rgba(239, 68, 68, 0.3); background: var(--danger-bg); justify-content: center;">
-          🗑
+        <button class="filter-chip" onclick="window.app.promptDelete('${s.id}', '${escapeHtml(s.query)}')" style="height: 36px; color: var(--danger); border-color: rgba(239, 68, 68, 0.3); background: var(--danger-bg); justify-content: center;" title="Удалить радар">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+          </svg>
         </button>
       </div>
     `;
@@ -539,13 +557,14 @@ function openLotModal(lot) {
   document.getElementById('modalDescription').textContent = lot.description || 'Описание отсутствует.';
   document.getElementById('modalSellerName').textContent = lot.seller.name;
   document.getElementById('modalSellerType').textContent = lot.seller.type === 'private' ? 'Частное лицо' : 'Компания / Магазин';
-  document.getElementById('modalLocation').textContent = `📍 ${lot.seller.location}`;
-  document.getElementById('modalDate').textContent = `⏱ ${lot.publishedText || 'сегодня'}`;
+  document.getElementById('modalLocation').textContent = lot.seller.location;
+  document.getElementById('modalDate').textContent = lot.publishedText || 'сегодня';
 
   const ratingEl = document.getElementById('modalSellerRating');
+  const ratingVal = document.getElementById('modalSellerRatingVal');
   if (lot.seller.rating) {
-    ratingEl.textContent = `★ ${lot.seller.rating}`;
-    ratingEl.style.display = 'inline-block';
+    if (ratingVal) ratingVal.textContent = lot.seller.rating;
+    ratingEl.style.display = 'inline-flex';
   } else {
     ratingEl.style.display = 'none';
   }
@@ -628,7 +647,7 @@ async function handleNewSearchSubmit(e) {
   populateSearchSelector();
   await loadData();
   setViewMode('cards');
-  showToast(`🎯 Радар «${q}» успешно запущен!`, 'success');
+  showToast(`Радар «${q}» успешно запущен!`, 'success');
 }
 
 function closeAllModals() {
@@ -691,8 +710,12 @@ function showToast(message, type = 'info') {
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
 
-  const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : '⚡';
-  toast.innerHTML = `<span>${icon}</span><span>${escapeHtml(message)}</span>`;
+  const icon = type === 'success'
+    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+    : type === 'error'
+    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
+    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
+  toast.innerHTML = `<span style="display: inline-flex; align-items: center;">${icon}</span><span>${escapeHtml(message)}</span>`;
 
   DOM.toastContainer.appendChild(toast);
 

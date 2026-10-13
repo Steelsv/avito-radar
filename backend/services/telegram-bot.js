@@ -29,6 +29,28 @@ function getBotToken() {
   return '5928342984:AAHRFliTSZwTaRYcp4m6Tkl0SCDtWnvN2mA';
 }
 
+// Custom Telegram Emojis (Telegram iOS Icons pack: https://emoji.wivvi.net / tgiosicons)
+const TG_EMOJI = {
+  LIGHTNING: '5884428842780594914', // ⚡
+  LINK: '6028171274939797252',      // 🔗
+  RADAR: '6037397706505195857',     // 👁
+  SEARCH: '6032850693348399258',    // 🔎
+  PROFILE: '6035084557378654059',   // 👤
+  PIN: '6042011682497106307',       // 📍
+  STAR: '6034923938486684992',      // ⭐️
+  CHECK: '5774022692642492953',     // ✅
+  WARN: '6030563507299160824',      // ❗️
+  TRASH: '6039522349517115015',     // 🗑
+  GROWTH: '5938539885907415367',    // 📈
+  COIN: '5890848474563352982',      // 🪙
+  BOX: '5884479287171485878',       // 📦
+  SHIELD: '6030445631921721471'     // 🛡
+};
+
+function tgEmoji(id, fallback) {
+  return `<tg-emoji emoji-id="${id}">${fallback}</tg-emoji>`;
+}
+
 function initTelegramBot() {
   const token = getBotToken();
   if (!token) {
@@ -51,12 +73,12 @@ function initTelegramBot() {
       botInstance.onText(/\/start/, (msg) => {
         const chatId = msg.chat.id;
         const welcomeText = 
-          `👁️ <b>СМОТРЯЩИЙ ЗА АВИТО // RADAR TERMINAL</b>\n\n` +
-          `⚡ <b>Интерактивный терминал готов к работе:</b>\n` +
-          `• 🎯 Менеджер поисков: создание и удаление любых радаров\n` +
-          `• 👁️ Функция <b>Vanish</b>: скрытие нерелевантных объявлений в 1 тап\n` +
-          `• 🎴 Карточки с фильтрацией дефектов и байт-цен\n` +
-          `• 📊 Встроенная таблица (замена Excel на iPhone)\n\n` +
+          `${tgEmoji(TG_EMOJI.RADAR, '👁')} <b>СМОТРЯЩИЙ ЗА АВИТО // RADAR TERMINAL</b>\n\n` +
+          `${tgEmoji(TG_EMOJI.LIGHTNING, '⚡')} <b>Интерактивный терминал готов к работе:</b>\n` +
+          `• ${tgEmoji(TG_EMOJI.SEARCH, '🔎')} Менеджер поисков: создание и удаление любых радаров\n` +
+          `• ${tgEmoji(TG_EMOJI.RADAR, '👁')} Функция <b>Vanish</b>: скрытие нерелевантных объявлений в 1 тап\n` +
+          `• ${tgEmoji(TG_EMOJI.SHIELD, '🛡')} Карточки с фильтрацией дефектов и байт-цен\n` +
+          `• ${tgEmoji(TG_EMOJI.GROWTH, '📈')} Встроенная таблица (замена Excel на iPhone)\n\n` +
           `<i>В этот чат приходят только мгновенные алерты о супер-ценах.</i>\n\n` +
           `Нажмите кнопку ниже, чтобы открыть терминал 👇`;
 
@@ -65,7 +87,11 @@ function initTelegramBot() {
           reply_markup: {
             inline_keyboard: [
               [
-                { text: '⚡ ОТКРЫТЬ ТЕРМИНАЛ (MINI APP)', web_app: { url: miniappUrl } }
+                {
+                  text: 'ОТКРЫТЬ ТЕРМИНАЛ (MINI APP)',
+                  web_app: { url: miniappUrl },
+                  icon_custom_emoji_id: TG_EMOJI.LIGHTNING
+                }
               ]
             ]
           }
@@ -87,25 +113,39 @@ async function sendDealAlert(chatId, lot) {
   const targetId = chatId || targetChatId || '1492667315';
   const miniappUrl = process.env.MINI_APP_URL || 'https://steelsv.github.io/avito-radar/';
 
-  const sellerRatingText = lot.seller?.rating ? `★ ${lot.seller.rating}` : '';
-  const sellerTypeText = lot.seller?.type === 'private' ? '👤 Частник' : '🏬 Магазин';
+  const eGrowth = tgEmoji(TG_EMOJI.GROWTH, '📈');
+  const eCoin = tgEmoji(TG_EMOJI.COIN, '🪙');
+  const ePin = tgEmoji(TG_EMOJI.PIN, '📍');
+  const eProfile = tgEmoji(TG_EMOJI.PROFILE, '👤');
+  const eStar = tgEmoji(TG_EMOJI.STAR, '⭐️');
+
+  const sellerRatingText = lot.seller?.rating ? `(${eStar} ${lot.seller.rating})` : '';
+  const sellerTypeText = lot.seller?.type === 'private' ? `${eProfile} Частник` : `${eProfile} Магазин`;
   const locationText = lot.seller?.location || 'Челябинск';
   const marketText = lot.marketPrice ? `${formatPrice(lot.marketPrice)}` : 'определяется';
   const diffSign = lot.discount <= 0 ? '' : '+';
 
   const caption = 
-    `🔥 <b>Новое выгодное предложение!</b>\n\n` +
+    `${eGrowth} <b>Новое выгодное предложение!</b>\n\n` +
     `<b>${escapeHtml(lot.title)}</b>\n` +
-    `💰 <b>${formatPrice(lot.price)}</b> (рынок: ${marketText})\n` +
-    `📉 Выгода: <b>${diffSign}${lot.discount}%</b>\n\n` +
+    `${eCoin} <b>${formatPrice(lot.price)}</b> (рынок: ${marketText})\n` +
+    `${eGrowth} Выгода: <b>${diffSign}${lot.discount}%</b>\n\n` +
     `${sellerTypeText} ${sellerRatingText}\n` +
-    `📍 ${escapeHtml(locationText)}`;
+    `${ePin} ${escapeHtml(locationText)}`;
 
   const keyboard = {
     inline_keyboard: [
       [
-        { text: '⚡ Открыть в терминале', web_app: { url: miniappUrl } },
-        { text: '👉 На Авито', url: lot.avitoUrl }
+        {
+          text: 'Открыть в терминале',
+          web_app: { url: miniappUrl },
+          icon_custom_emoji_id: TG_EMOJI.LIGHTNING
+        },
+        {
+          text: 'На Авито',
+          url: lot.avitoUrl,
+          icon_custom_emoji_id: TG_EMOJI.LINK
+        }
       ]
     ]
   };

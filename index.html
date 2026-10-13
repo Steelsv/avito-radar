@@ -26,7 +26,10 @@
     <a href="#" class="brand-block" onclick="event.preventDefault(); window.app.setViewMode('cards')">
       <div class="radar-logo">
         <div class="radar-beam"></div>
-        <span style="position: relative; z-index: 2; font-size: 16px;">👁️</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: relative; z-index: 2;">
+          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
       </div>
       <div>
         <div class="brand-title">
@@ -43,7 +46,11 @@
     <!-- Top Action Buttons -->
     <div style="display: flex; align-items: center; gap: 8px;">
       <button class="filter-chip" onclick="window.app.setViewMode('searches')" style="height: 36px; padding: 0 12px;" title="Мои поиски">
-        <span>🎯</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="2"/>
+        </svg>
         <span style="font-weight: 600;">Поиски</span>
       </button>
 
@@ -68,40 +75,43 @@
     <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
       <div style="flex: 2; min-width: 170px;">
         <select id="searchSelector" class="form-select" style="height: 38px; font-size: 12px; font-weight: 600; padding: 0 10px;">
-          <option value="all">🔍 Все радары (общий поток)</option>
+          <option value="all">Все радары (общий поток)</option>
         </select>
       </div>
 
       <!-- Segmented View Toggle -->
       <div class="segmented-toggle">
         <button id="tab-cards" class="segmented-btn active" onclick="window.app.setViewMode('cards')">
-          🎴 Карточки
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg> Карточки
         </button>
         <button id="tab-table" class="segmented-btn" onclick="window.app.setViewMode('table')">
-          📊 Таблица
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></svg> Таблица
         </button>
         <button id="tab-fav" class="segmented-btn" onclick="window.app.setViewMode('fav')">
-          ★ <span id="favCount" style="color: var(--warning); font-size: 11px;">0</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <span id="favCount" style="color: var(--warning); font-size: 11px;">0</span>
         </button>
         <button id="tab-searches" class="segmented-btn" onclick="window.app.setViewMode('searches')">
-          🎯 Радары
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Радары
         </button>
       </div>
 
       <!-- Sort selector -->
       <div style="flex: 1; min-width: 130px;">
         <select id="sortSelector" class="form-select font-mono" style="height: 38px; font-size: 11px; padding: 0 8px;">
-          <option value="deal">🔥 По выгоде</option>
-          <option value="cheap">📉 Дешевле</option>
-          <option value="expensive">📈 Дороже</option>
-          <option value="date">⏱ Новые</option>
+          <option value="deal">По выгоде (%)</option>
+          <option value="cheap">Сначала дешевле</option>
+          <option value="expensive">Сначала дороже</option>
+          <option value="date">Сначала новые</option>
         </select>
       </div>
     </div>
 
     <!-- Keyword Filter Row -->
     <div style="position: relative; display: flex; align-items: center;">
-      <span style="position: absolute; left: 12px; color: var(--text-secondary); pointer-events: none; font-size: 13px;">🔍</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; pointer-events: none;">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
       <input type="text" id="filterInput" placeholder="Быстрый фильтр по ключевым словам, продавцу, адресу..." class="form-input" style="height: 36px; padding-left: 34px; padding-right: 32px; font-size: 12px;">
       <button id="btnClearFilter" class="btn-vanish hidden" style="position: absolute; right: 4px; width: 28px; height: 28px; font-size: 12px;">✕</button>
     </div>
@@ -112,19 +122,19 @@
         Все
       </button>
       <button id="chip-deals" class="filter-chip" onclick="window.app.setFilterChip('deals')">
-        🔥 Только выгода
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 12-7 7-7-7M19 5l-7 7-7-7"/></svg> Только выгода
       </button>
       <button id="chip-private" class="filter-chip" onclick="window.app.setFilterChip('private')">
-        👤 Частники
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Частники
       </button>
       <button id="chip-delivery" class="filter-chip" onclick="window.app.setFilterChip('delivery')">
-        📦 Доставка
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg> Доставка
       </button>
       <button id="chip-nodefects" class="filter-chip" onclick="window.app.setFilterChip('nodefects')">
-        🛡 Без дефектов
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Без дефектов
       </button>
       <button id="chip-dismissed" class="filter-chip" onclick="window.app.setFilterChip('dismissed')">
-        👁️ Скрытые (<span id="dismissedCount">0</span>)
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 20 20M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/></svg> Скрытые (<span id="dismissedCount">0</span>)
       </button>
     </div>
   </section>
@@ -135,7 +145,7 @@
     <div class="stat-card">
       <div class="stat-label">
         <span>Рыночная цена</span>
-        <span>📊</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
       </div>
       <div id="statMedianPrice" class="stat-value">—</div>
       <div class="stat-subtext">честная медиана рынка</div>
@@ -145,7 +155,7 @@
     <div class="stat-card">
       <div class="stat-label">
         <span>Супер-цены</span>
-        <span style="color: var(--success);">⚡</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       </div>
       <div id="statDealsCount" class="stat-value" style="color: var(--success);">0</div>
       <div class="stat-subtext">предложений ниже рынка</div>
@@ -155,7 +165,7 @@
     <div class="stat-card">
       <div class="stat-label">
         <span>Макс. выгода</span>
-        <span>📉</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
       </div>
       <div id="statTopDiscount" class="stat-value" style="color: var(--success);">0%</div>
       <div class="stat-subtext">лучшая скидка в потоке</div>
@@ -165,7 +175,7 @@
     <div class="stat-card">
       <div class="stat-label">
         <span>Активные радары</span>
-        <span style="color: var(--primary);">🎯</span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
       </div>
       <div id="statActiveRadars" class="stat-value">3</div>
       <div class="stat-subtext">отслеживание 24/7</div>
@@ -217,7 +227,10 @@
 
   <!-- Empty State Placeholder -->
   <div id="emptyState" class="hidden" style="text-align: center; padding: 60px 20px; max-width: 380px; margin: 0 auto;">
-    <div style="font-size: 48px; opacity: 0.6; margin-bottom: 14px;">🔍</div>
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.5; margin-bottom: 14px; margin-inline: auto;">
+      <circle cx="11" cy="11" r="8"></circle>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </svg>
     <div class="h3" style="margin-bottom: 8px;">Нет подходящих объявлений</div>
     <p class="caption" style="margin-bottom: 20px; line-height: 1.5;">Попробуйте сбросить фильтры или добавьте новый поисковый запрос в радар.</p>
     <button class="filter-chip" onclick="window.app.setFilterChip('all')" style="margin: 0 auto; border-color: var(--primary); color: #A5B4FC;">
@@ -254,11 +267,14 @@
             <div id="modalSellerName" style="font-weight: 600; color: var(--text-primary);"></div>
             <div id="modalSellerType" class="caption"></div>
           </div>
-          <span id="modalSellerRating" class="deal-badge" style="background: var(--warning-bg); color: var(--warning); border-color: rgba(245,158,11,0.3)">★ 5.0</span>
+          <span id="modalSellerRating" class="deal-badge" style="background: var(--warning-bg); color: var(--warning); border-color: rgba(245,158,11,0.3)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span id="modalSellerRatingVal">5.0</span>
+          </span>
         </div>
         <div style="border-top: 1px solid rgba(255,255,255,0.06); margin-top: 10px; padding-top: 8px; display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary);" class="font-mono">
-          <span id="modalLocation">📍 Челябинск</span>
-          <span id="modalDate">⏱ сегодня</span>
+          <span id="modalLocation">Челябинск</span>
+          <span id="modalDate">сегодня</span>
         </div>
       </div>
 
@@ -321,7 +337,7 @@
         </div>
 
         <button type="submit" class="btn-cta" style="height: 48px; font-size: 14px; margin-top: 18px;">
-          <span>🚀 ЗАПУСТИТЬ РАДАР</span>
+          <span>ЗАПУСТИТЬ РАДАР</span>
         </button>
       </form>
     </div>
@@ -333,7 +349,7 @@
       <div class="sheet-handle"></div>
     </div>
     <div class="sheet-content" style="text-align: center; padding: 24px 20px;">
-      <div style="font-size: 40px; margin-bottom: 12px;">⚠️</div>
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 12px; margin-inline: auto;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       <h2 class="h2" style="margin-bottom: 6px;">Удалить этот радар?</h2>
       <p class="caption" style="margin-bottom: 20px;">Вы собираетесь удалить поиск «<b id="deleteSearchTitle" style="color: var(--text-primary);"></b>». Мониторинг новых лотов по нему прекратится.</p>
       <div style="display: flex; gap: 10px;">

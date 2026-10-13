@@ -20,6 +20,30 @@ TELEGRAM_CONFIG_PATH = DATA_DIR / "telegram.json"
 API_URL = "https://api.telegram.org/bot{token}/{method}"
 
 
+# Custom Telegram Emojis (Telegram iOS Icons pack: https://emoji.wivvi.net / tgiosicons)
+TG_EMOJI_LIGHTNING = "5884428842780594914"  # ⚡
+TG_EMOJI_LINK = "6028171274939797252"       # 🔗
+TG_EMOJI_RADAR = "6037397706505195857"      # 👁
+TG_EMOJI_SEARCH = "6032850693348399258"     # 🔎
+TG_EMOJI_PROFILE = "6035084557378654059"    # 👤
+TG_EMOJI_PIN = "6042011682497106307"        # 📍
+TG_EMOJI_STAR = "6034923938486684992"       # ⭐️
+TG_EMOJI_CHECK = "5774022692642492953"      # ✅
+TG_EMOJI_WARN = "6030563507299160824"       # ❗️
+TG_EMOJI_TRASH = "6039522349517115015"      # 🗑
+TG_EMOJI_GROWTH = "5938539885907415367"     # 📈
+TG_EMOJI_COIN = "5890848474563352982"       # 🪙
+TG_EMOJI_BOX = "5884479287171485878"        # 📦
+TG_EMOJI_SHIELD = "6030445631921721471"     # 🛡
+TG_EMOJI_REPEAT = "6030657343744644592"     # 🔁
+TG_EMOJI_STORE = "5920332557466997677"      # 🏪
+TG_EMOJI_CLOCK = "5983150113483134607"      # ⏰
+
+def tg_e(emoji_id: str, fallback: str) -> str:
+    """Format custom Telegram emoji tag."""
+    return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji>'
+
+
 @dataclass
 class TelegramConfig:
     token: str
@@ -80,13 +104,22 @@ def auto_detect_chat_id(token: str) -> tuple[int, str]:
 
 
 def format_ad_message(search_title: str, item: ParsedItem) -> str:
+    e_growth = tg_e(TG_EMOJI_GROWTH, "📈")
+    e_coin = tg_e(TG_EMOJI_COIN, "🪙")
+    e_warn = tg_e(TG_EMOJI_WARN, "❗️")
+    e_pin = tg_e(TG_EMOJI_PIN, "📍")
+    e_user = tg_e(TG_EMOJI_PROFILE, "👤")
+    e_star = tg_e(TG_EMOJI_STAR, "⭐️")
+    e_radar = tg_e(TG_EMOJI_RADAR, "👁")
+    e_lightning = tg_e(TG_EMOJI_LIGHTNING, "⚡")
+
     is_top_deal = item.market_diff_percent and item.market_diff_percent <= -12 and not item.is_combo_listing
-    header = f"🔥 <b>НАЙДЕН ВЫГОДНЫЙ ЛОТ ({item.market_diff_percent}%)</b>" if is_top_deal else f"🔔 <b>{html.escape(item.title)}</b>"
+    header = f"{e_growth} <b>НАЙДЕН ВЫГОДНЫЙ ЛОТ ({item.market_diff_percent}%)</b>" if is_top_deal else f"{e_radar} <b>{html.escape(item.title)}</b>"
 
     lines = [
         header,
-        f"📌 <b>{html.escape(item.title)}</b>" if is_top_deal else "",
-        f"💰 <b>{html.escape(item.price_formatted)}</b>",
+        f"<b>{html.escape(item.title)}</b>" if is_top_deal else "",
+        f"{e_coin} <b>{html.escape(item.price_formatted)}</b>",
     ]
     lines = [l for l in lines if l]
 
@@ -94,12 +127,12 @@ def format_ad_message(search_title: str, item: ParsedItem) -> str:
         market_str = f"{item.market_price:,} ₽".replace(",", " ")
         if item.is_combo_listing:
             real_str = f"{item.real_price_in_desc:,} ₽".replace(",", " ") if item.real_price_in_desc else "в тексте"
-            lines.append(f"⚠️ <i>Внимание: в описании целевой товар от ~{real_str}</i>")
+            lines.append(f"{e_warn} <i>Внимание: в описании целевой товар от ~{real_str}</i>")
         elif (item.market_diff_percent or 0) < 0:
             diff_abs = abs(round(item.market_diff_percent or 0, 1))
-            lines.append(f"⚡ <i>Ниже рынка на {diff_abs}% (оценка рынка ~{market_str})</i>")
+            lines.append(f"{e_growth} <i>Ниже рынка на {diff_abs}% (оценка рынка ~{market_str})</i>")
         else:
-            lines.append(f"📊 <i>Рыночная цена ~{market_str} ({item.market_diff_percent:+.1f}%)</i>")
+            lines.append(f"<i>Рыночная цена ~{market_str} ({item.market_diff_percent:+.1f}%)</i>")
 
     loc_parts = []
     if item.city:
@@ -109,22 +142,20 @@ def format_ad_message(search_title: str, item: ParsedItem) -> str:
     elif item.address:
         loc_parts.append(item.address)
     if loc_parts:
-        lines.append(f"📍 {html.escape(' · '.join(loc_parts))}")
+        lines.append(f"{e_pin} {html.escape(' · '.join(loc_parts))}")
 
     # Seller
-    seller_info = item.seller_name or item.seller_type
-    if item.seller_rating:
-        seller_info += f" (⭐ {item.seller_rating})"
-    if item.closed_listings is not None:
-        seller_info += f", {item.closed_listings} сделок"
-    lines.append(f"👤 {html.escape(seller_info)}")
+    seller_name = html.escape(item.seller_name or item.seller_type or "Частное лицо")
+    rating_part = f" ({e_star} {item.seller_rating})" if item.seller_rating else ""
+    deals_part = f", {item.closed_listings} сделок" if item.closed_listings is not None else ""
+    lines.append(f"{e_user} {seller_name}{rating_part}{deals_part}")
 
     if item.tags:
-        clean_tags = [t for t in item.tags if not t.startswith("🔥 Выгодно")]
+        clean_tags = [t for t in item.tags if not t.startswith("🔥 Выгодно") and not t.startswith("Выгодно")]
         if clean_tags:
-            lines.append("🏷 " + " · ".join(html.escape(t) for t in clean_tags[:3]))
+            lines.append("· " + " · ".join(html.escape(t) for t in clean_tags[:3]))
 
-    lines.append(f"\n<i>⚡ Откройте терминал для полной аналитики и сравнения лотов</i>")
+    lines.append(f"\n{e_lightning} <i>Откройте терминал для полной аналитики и сравнения лотов</i>")
     lines.append(f"<i>Поиск: #{html.escape(search_title.replace(' ', '_'))}</i>")
 
     return "\n".join(lines)
@@ -162,8 +193,9 @@ class TelegramNotifier:
         return True
 
     def send_test_message(self) -> None:
+        e_lightning = tg_e(TG_EMOJI_LIGHTNING, "⚡")
         api_request(self.config.token, "sendMessage", {
             "chat_id": self.config.chat_id,
-            "text": "🚀 <b>Avito Radar подключён!</b>\n\nУведомления о новых объявлениях будут приходить сюда в реальном времени.",
+            "text": f"{e_lightning} <b>Avito Radar подключён!</b>\n\nУведомления о новых объявлениях будут приходить сюда в реальном времени.",
             "parse_mode": "HTML",
         })

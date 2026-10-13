@@ -28,9 +28,23 @@ from avito_radar.core.client import AvitoClient
 from avito_radar.engine import create_search_from_url, scan_search
 from avito_radar.exporters.excel import export_to_excel
 from avito_radar.notifications.telegram import (
+    TG_EMOJI_CHECK,
+    TG_EMOJI_COIN,
+    TG_EMOJI_GROWTH,
+    TG_EMOJI_LIGHTNING,
+    TG_EMOJI_LINK,
+    TG_EMOJI_PIN,
+    TG_EMOJI_PROFILE,
+    TG_EMOJI_RADAR,
+    TG_EMOJI_SEARCH,
+    TG_EMOJI_SHIELD,
+    TG_EMOJI_STAR,
+    TG_EMOJI_TRASH,
+    TG_EMOJI_WARN,
     TelegramConfig,
     format_ad_message,
     load_telegram_config,
+    tg_e,
 )
 from avito_radar.parsers.item_parser import ParsedItem, inspect_item_views, parse_catalog_item
 from avito_radar.parsers.url_resolver import transliterate
@@ -129,7 +143,7 @@ class AvitoTelegramBot:
             self.call_api("setChatMenuButton", {
                 "menu_button": {
                     "type": "web_app",
-                    "text": "⚡ Радар",
+                    "text": "Терминал Радара",
                     "web_app": {"url": miniapp_url},
                 }
             })
@@ -232,8 +246,16 @@ class AvitoTelegramBot:
         kb = {
             "inline_keyboard": [
                 [
-                    {"text": "⚡ Открыть в терминале (Mini App)", "web_app": {"url": miniapp_url}},
-                    {"text": "👉 На Авито", "url": item.url},
+                    {
+                        "text": "Открыть в терминале",
+                        "web_app": {"url": miniapp_url},
+                        "icon_custom_emoji_id": TG_EMOJI_LIGHTNING,
+                    },
+                    {
+                        "text": "На Авито",
+                        "url": item.url,
+                        "icon_custom_emoji_id": TG_EMOJI_LINK,
+                    },
                 ]
             ]
         }
@@ -259,7 +281,11 @@ class AvitoTelegramBot:
         return {
             "inline_keyboard": [
                 [
-                    {"text": "⚡ ОТКРЫТЬ ТЕРМИНАЛ (MINI APP)", "web_app": {"url": miniapp_url}},
+                    {
+                        "text": "ОТКРЫТЬ ТЕРМИНАЛ (MINI APP)",
+                        "web_app": {"url": miniapp_url},
+                        "icon_custom_emoji_id": TG_EMOJI_LIGHTNING,
+                    },
                 ],
             ]
         }
@@ -267,19 +293,19 @@ class AvitoTelegramBot:
     def send_main_menu(self, chat_id: int, message_id: int | None = None) -> None:
         session = self.get_session(chat_id)
         session.state = "IDLE"
-        watch_status = "🟢 ВКЛ (24/7)" if self.monitoring_active else "🔴 ВЫКЛ"
+        watch_status = f"{tg_e(TG_EMOJI_CHECK, '✅')} ВКЛ (24/7)" if self.monitoring_active else f"{tg_e(TG_EMOJI_WARN, '❗️')} ВЫКЛ"
         searches = list_searches()
         text = (
-            "👁️ <b>СМОТРЯЩИЙ ЗА АВИТО // RADAR TERMINAL</b>\n\n"
-            "⚡ <b>Все управление перенесено в Mini App:</b>\n"
-            "• 🎯 Создание любого нового поиска и запуск радара\n"
-            "• 🗑 Удаление существующих поисков в 1 клик\n"
-            "• 🎴 Карточки с фильтрацией дефектов и байт-цен\n"
-            "• 📊 Встроенная таблица (полная замена Excel)\n\n"
-            f"📡 Статус мониторинга: <b>{watch_status}</b>\n"
-            f"🎯 Активных радаров: <b>{len(searches)}</b>\n\n"
-            "<i>В этот чат приходят только карточки новых выгодных объявлений.</i>\n\n"
-            "Нажмите кнопку ниже для перехода в терминал 👇"
+            f"{tg_e(TG_EMOJI_RADAR, '👁')} <b>СМОТРЯЩИЙ ЗА АВИТО // RADAR TERMINAL</b>\n\n"
+            f"{tg_e(TG_EMOJI_LIGHTNING, '⚡')} <b>Все управление перенесено в Mini App:</b>\n"
+            f"• {tg_e(TG_EMOJI_SEARCH, '🔎')} Создание любого нового поиска и запуск радара\n"
+            f"• {tg_e(TG_EMOJI_TRASH, '🗑')} Удаление существующих поисков в 1 клик\n"
+            f"• {tg_e(TG_EMOJI_SHIELD, '🛡')} Карточки с фильтрацией дефектов и байт-цен\n"
+            f"• {tg_e(TG_EMOJI_GROWTH, '📈')} Встроенная таблица (полная замена Excel)\n\n"
+            f"{tg_e(TG_EMOJI_RADAR, '👁')} Статус мониторинга: <b>{watch_status}</b>\n"
+            f"{tg_e(TG_EMOJI_SEARCH, '🔎')} Активных радаров: <b>{len(searches)}</b>\n\n"
+            f"<i>В этот чат приходят только карточки новых выгодных объявлений.</i>\n\n"
+            f"Нажмите кнопку ниже для перехода в терминал 👇"
         )
         self.render_menu(chat_id, text, self.main_menu_keyboard(), message_id=message_id)
 
