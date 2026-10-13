@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# User data & exports
+data/
+output/
+
+# Logs & temp
+*.log
