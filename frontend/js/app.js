@@ -134,6 +134,9 @@ const TelegramService = {
     try {
       tg.ready();
       tg.expand();
+      if (typeof tg.requestFullscreen === 'function') {
+        try { tg.requestFullscreen(); } catch (_) {}
+      }
       tg.headerColor = '#0A0A0B';
       tg.backgroundColor = '#0A0A0B';
       if (tg.isVerticalSwipesEnabled !== undefined) {
@@ -237,7 +240,27 @@ const ApiService = {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.search) return data.search;
+        if (data.search) {
+          const existing = await this.getSearches();
+          const filtered = existing.filter(s => s.id !== data.search.id);
+          filtered.unshift(data.search);
+          SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(filtered));
+          return data.search;
+        }
+        if (data.name) {
+          const s = {
+            id: data.name,
+            query: payload.query,
+            city: payload.city || 'Челябинск',
+            minPrice: Number(payload.minPrice) || 0,
+            isActive: true
+          };
+          const existing = await this.getSearches();
+          const filtered = existing.filter(x => x.id !== s.id);
+          filtered.unshift(s);
+          SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(filtered));
+          return s;
+        }
       }
     } catch (err) {
       console.warn('[API] createSearch API offline, persisting locally:', err.message);
@@ -795,6 +818,7 @@ function renderView() {
     DOM.lotsContainer?.classList.add('hidden');
     DOM.tableWrapper?.classList.add('hidden');
     DOM.emptyState?.classList.remove('hidden');
+    renderEmptyState();
     return;
   }
 
@@ -847,6 +871,77 @@ function updateStats() {
   const dismissedCount = document.getElementById('dismissedCount');
   const totalDismissed = State.lots.filter(l => l.isDismissed).length;
   if (dismissedCount) dismissedCount.textContent = totalDismissed;
+}
+
+function renderEmptyState() {
+  if (!DOM.emptyState) return;
+
+  if (State.searchQuery) {
+    DOM.emptyState.innerHTML = `
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6; margin-bottom: 12px; margin-inline: auto;">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <div class="h3" style="margin-bottom: 6px;">Ничего не найдено</div>
+      <p class="caption" style="margin-bottom: 16px;">По запросу «${escapeHtml(State.searchQuery)}» нет совпадений.</p>
+      <button class="filter-chip" onclick="document.getElementById('filterInput').value=''; window.app.applyQueryFilter('');" style="margin: 0 auto; border-color: var(--primary); color: #A5B4FC;">
+        Очистить поиск
+      </button>
+    `;
+    return;
+  }
+
+  if (State.activeFilter !== 'all') {
+    DOM.emptyState.innerHTML = `
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6; margin-bottom: 12px; margin-inline: auto;">
+        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+      </svg>
+      <div class="h3" style="margin-bottom: 6px;">Нет лотов под этот фильтр</div>
+      <p class="caption" style="margin-bottom: 16px;">Попробуйте выбрать другой фильтр или посмотреть все предложения.</p>
+      <button class="filter-chip" onclick="window.app.setFilterChip('all')" style="margin: 0 auto; border-color: var(--primary); color: #A5B4FC;">
+        Показать все лоты
+      </button>
+    `;
+    return;
+  }
+
+  if (State.currentSearchId && State.currentSearchId !== 'all') {
+    const curr = State.searches.find(s => s.id === State.currentSearchId);
+    const title = curr ? formatSearchDisplay(curr) : State.currentSearchId;
+    DOM.emptyState.innerHTML = `
+      <div class="radar-logo" style="width: 48px; height: 48px; margin: 0 auto 14px; border-radius: 14px;">
+        <div class="radar-beam"></div>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+        </svg>
+      </div>
+      <div class="h3" style="margin-bottom: 6px;">Радар «${escapeHtml(title)}» сканирует Авито</div>
+      <p class="caption" style="margin-bottom: 18px; max-width: 320px; margin-inline: auto; line-height: 1.5;">
+        Радар отслеживает свежие предложения 24/7. Как только появятся объявления, они сразу отобразятся здесь.
+      </p>
+      <button class="btn-cta" onclick="window.app.scanSearch('${State.currentSearchId}')" style="max-width: 240px; margin: 0 auto; height: 38px; font-size: 13px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+        Просканировать сейчас
+      </button>
+    `;
+    return;
+  }
+
+  DOM.emptyState.innerHTML = `
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6; margin-bottom: 12px; margin-inline: auto;">
+      <circle cx="11" cy="11" r="8"></circle>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </svg>
+    <div class="h3" style="margin-bottom: 6px;">Нет подходящих объявлений</div>
+    <p class="caption" style="margin-bottom: 16px;">Добавьте новый поисковый запрос в радар.</p>
+    <button class="btn-cta" onclick="window.app.openNewSearchModal()" style="max-width: 220px; margin: 0 auto; height: 38px;">
+      + Создать поиск
+    </button>
+  `;
 }
 
 // ==========================================================================
@@ -1136,6 +1231,7 @@ async function handleNewSearchSubmit(e) {
     filters: { noDefects: true }
   });
 
+  State.searches = State.searches.filter(s => s.id !== newSearch.id);
   State.searches.unshift(newSearch);
   State.currentSearchId = newSearch.id;
 
@@ -1143,7 +1239,22 @@ async function handleNewSearchSubmit(e) {
   updateDeleteCurrentButtonVisibility();
   await loadData();
   setViewMode('cards');
-  showToast(`Радар [${getCityAbbr(city)}] ${q} успешно запущен!`, 'success');
+  showToast(`Радар [${getCityAbbr(city)}] ${q} запущен! Ищем предложения...`, 'info');
+
+  // Active polling to fetch lots as soon as Avito scan finishes
+  let pollCount = 0;
+  const pollTimer = setInterval(async () => {
+    pollCount++;
+    await loadData();
+    const lotsCount = State.lots.filter(l => l.searchId === newSearch.id && !l.isDismissed).length;
+    if (lotsCount > 0) {
+      clearInterval(pollTimer);
+      showToast(`Найдено ${lotsCount} лотов по [${getCityAbbr(city)}] ${q}!`, 'success');
+      TelegramService.haptic('success');
+    } else if (pollCount >= 6) {
+      clearInterval(pollTimer);
+    }
+  }, 3000);
 }
 
 function showToast(message, type = 'info') {

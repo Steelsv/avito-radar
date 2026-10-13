@@ -135,14 +135,24 @@ def parse_catalog_item(item: dict[str, Any]) -> ParsedItem:
         if isinstance(badge, dict) and badge.get("title")
     )
 
-    # Images
+    # Images (pick maximum available resolution for high quality)
     images: list[str] = []
     for img in item.get("images") or []:
         if isinstance(img, dict):
-            # Prefer largest
-            urls = [v for k, v in img.items() if isinstance(v, str) and v.startswith("http")]
-            if urls:
-                images.append(urls[-1])
+            best_url = ""
+            max_pixels = -1
+            for k, v in img.items():
+                if isinstance(v, str) and v.startswith("http"):
+                    m = re.match(r"(\d+)x(\d+)", k)
+                    if m:
+                        pixels = int(m.group(1)) * int(m.group(2))
+                        if pixels > max_pixels:
+                            max_pixels = pixels
+                            best_url = v
+                    elif not best_url:
+                        best_url = v
+            if best_url:
+                images.append(best_url)
 
     description = str(item.get("description") or "").strip()
     phone_available = bool((item.get("contacts") or {}).get("phone"))

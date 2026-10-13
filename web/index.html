@@ -71,9 +71,9 @@
 
   <!-- Sticky Filter Bar -->
   <section class="filter-bar-sticky">
-    <!-- Controls Row: Selector, Search, Tabs -->
-    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
-      <div style="flex: 2; min-width: 170px; display: flex; align-items: center; gap: 6px;">
+    <!-- Controls Row 1: Search Scope & Sort -->
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+      <div style="flex: 1; display: flex; align-items: center; gap: 6px;">
         <select id="searchSelector" class="form-select" style="height: 38px; font-size: 12px; font-weight: 600; padding: 0 10px; flex: 1;">
           <option value="all">Все радары (общий поток)</option>
         </select>
@@ -84,30 +84,31 @@
         </button>
       </div>
 
-      <!-- Segmented View Toggle -->
-      <div class="segmented-toggle">
-        <button id="tab-cards" class="segmented-btn active" onclick="window.app.setViewMode('cards')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg> Карточки
-        </button>
-        <button id="tab-table" class="segmented-btn" onclick="window.app.setViewMode('table')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></svg> Таблица
-        </button>
-        <button id="tab-fav" class="segmented-btn" onclick="window.app.setViewMode('fav')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <span id="favCount" style="color: var(--warning); font-size: 11px;">0</span>
-        </button>
-        <button id="tab-searches" class="segmented-btn" onclick="window.app.setViewMode('searches')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Радары
-        </button>
-      </div>
-
-      <!-- Sort selector -->
-      <div style="flex: 1; min-width: 130px;">
+      <div style="width: 135px; flex-shrink: 0;">
         <select id="sortSelector" class="form-select font-mono" style="height: 38px; font-size: 11px; padding: 0 8px;">
           <option value="deal">По выгоде (%)</option>
           <option value="cheap">Сначала дешевле</option>
           <option value="expensive">Сначала дороже</option>
           <option value="date">Сначала новые</option>
         </select>
+      </div>
+    </div>
+
+    <!-- Controls Row 2: Segmented View Toggle -->
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+      <div class="segmented-toggle" style="flex: 1; max-width: 480px; justify-content: space-between;">
+        <button id="tab-cards" class="segmented-btn active" onclick="window.app.setViewMode('cards')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg> Карточки
+        </button>
+        <button id="tab-table" class="segmented-btn" onclick="window.app.setViewMode('table')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></svg> Таблица
+        </button>
+        <button id="tab-fav" class="segmented-btn" onclick="window.app.setViewMode('fav')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Fav <span id="favCount" style="color: var(--warning); font-size: 10px; font-weight: 700;">0</span>
+        </button>
+        <button id="tab-searches" class="segmented-btn" onclick="window.app.setViewMode('searches')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Радары
+        </button>
       </div>
     </div>
 

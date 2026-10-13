@@ -55,6 +55,7 @@ from avito_radar.storage.db import (
     delete_search,
     list_searches,
     load_listings,
+    load_locations_cache,
     load_search,
     load_seen,
     save_listings,
@@ -1011,16 +1012,34 @@ def start_healthcheck_server() -> None:
                     city = req_data.get("city", "chelyabinsk").strip()
                     min_price = int(req_data.get("min_price") or 0)
                     c_name = ""
+                    s_rec = None
                     if query:
-                        city_slug = transliterate(city).replace(" ", "_")
-                        clean_q = transliterate(query).replace(" ", "_")
+                        city_slug = transliterate(city).replace(" ", "_").lower()
+                        clean_q = transliterate(query).replace(" ", "_").lower()
                         c_name = re.sub(r"[^a-z0-9_-]+", "_", f"{clean_q}_{city_slug}").strip("_")
                         encoded_q = urllib.parse.quote(query)
                         target_url = f"https://www.avito.ru/{city_slug}?q={encoded_q}"
                         if min_price > 0:
                             target_url += f"&pmin={min_price}"
-                        cl = AvitoClient()
-                        s_rec = create_search_from_url(cl, target_url, custom_name=c_name)
+
+                        cache = load_locations_cache()
+                        city_entry = (cache.get("cities") or {}).get(city_slug)
+                        loc_id = str(city_entry["id"]) if city_entry else "661420"
+                        city_display = city_entry.get("name", city) if city_entry else city
+
+                        s_rec = load_search(c_name)
+                        if not s_rec:
+                            s_rec = SearchRecord(
+                                name=c_name,
+                                title=query,
+                                category_type="goods",
+                                catalog_url=target_url,
+                                city=city_display,
+                                params={"q": query, "locationId": loc_id},
+                                min_price=min_price if min_price > 0 else None,
+                            )
+                            save_search(s_rec)
+                            logger.info("Search '%s' successfully created via API", c_name)
 
                         # Trigger background scan of first page immediately
                         def _bg_scan(rec: SearchRecord) -> None:
@@ -1037,7 +1056,18 @@ def start_healthcheck_server() -> None:
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
-                    self.wfile.write(json.dumps({"ok": True, "name": c_name}).encode("utf-8"))
+                    self.wfile.write(json.dumps({
+                        "ok": True,
+                        "success": True,
+                        "name": c_name,
+                        "search": {
+                            "id": s_rec.name if s_rec else c_name,
+                            "query": s_rec.title if s_rec else query,
+                            "city": s_rec.city if s_rec else city,
+                            "minPrice": s_rec.min_price or 0 if s_rec else min_price,
+                            "isActive": True
+                        }
+                    }, ensure_ascii=False).encode("utf-8"))
                     return
                 except Exception as exc:
                     logger.warning("Error creating search from API: %s", exc)

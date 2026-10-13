@@ -63,8 +63,38 @@ def save_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+DEFAULT_CITIES: dict[str, dict[str, Any]] = {
+    "chelyabinsk": {"id": 661420, "name": "Челябинск"},
+    "moskva": {"id": 637640, "name": "Москва"},
+    "sankt-peterburg": {"id": 653240, "name": "Санкт-Петербург"},
+    "ekaterinburg": {"id": 626600, "name": "Екатеринбург"},
+    "novosibirsk": {"id": 645250, "name": "Новосибирск"},
+    "kazan": {"id": 632660, "name": "Казань"},
+    "nizhniy_novgorod": {"id": 641780, "name": "Нижний Новгород"},
+    "samara": {"id": 651440, "name": "Самара"},
+    "omsk": {"id": 646190, "name": "Омск"},
+    "rostov-na-donu": {"id": 649980, "name": "Ростов-на-Дону"},
+    "ufa": {"id": 658600, "name": "Уфа"},
+    "krasnoyarsk": {"id": 635840, "name": "Красноярск"},
+    "voronezh": {"id": 625880, "name": "Воронеж"},
+    "perm": {"id": 647680, "name": "Пермь"},
+    "volgograd": {"id": 624560, "name": "Волгоград"},
+    "krasnodar": {"id": 634810, "name": "Краснодар"},
+    "tyumen": {"id": 657410, "name": "Тюмень"},
+    "sochi": {"id": 635240, "name": "Сочи"},
+    "rossiya": {"id": 621540, "name": "Вся Россия"},
+}
+
+
 def load_locations_cache() -> dict[str, Any]:
-    return load_json(LOCATIONS_CACHE_PATH)
+    data = load_json(LOCATIONS_CACHE_PATH)
+    if "cities" not in data or not data["cities"]:
+        data["cities"] = DEFAULT_CITIES.copy()
+    else:
+        for k, v in DEFAULT_CITIES.items():
+            if k not in data["cities"]:
+                data["cities"][k] = v
+    return data
 
 
 def save_locations_cache(cache: dict[str, Any]) -> None:
