@@ -228,6 +228,15 @@ class AvitoTelegramBot:
 
     def send_photo_alert(self, chat_id: int, item: ParsedItem, search_title: str) -> None:
         caption = format_ad_message(search_title, item)
+        miniapp_url = os.environ.get("MINI_APP_URL", "https://steelsv.github.io/avito-radar/")
+        kb = {
+            "inline_keyboard": [
+                [
+                    {"text": "⚡ Открыть в терминале (Mini App)", "web_app": {"url": miniapp_url}},
+                    {"text": "👉 На Авито", "url": item.url},
+                ]
+            ]
+        }
         if item.images:
             try:
                 res = self.call_api("sendPhoto", {
@@ -235,12 +244,13 @@ class AvitoTelegramBot:
                     "photo": item.images[0],
                     "caption": caption,
                     "parse_mode": "HTML",
+                    "reply_markup": kb,
                 })
                 if res.get("ok"):
                     return
             except Exception:
                 pass
-        self.send_message(chat_id, caption)
+        self.send_message(chat_id, caption, reply_markup=kb)
 
     # --- Menus and Keyboards ---
 
@@ -250,7 +260,7 @@ class AvitoTelegramBot:
         return {
             "inline_keyboard": [
                 [
-                    {"text": "📱 Открыть радар (Mini App)", "web_app": {"url": miniapp_url}},
+                    {"text": "⚡ ОТКРЫТЬ ТЕРМИНАЛ (MINI APP)", "web_app": {"url": miniapp_url}},
                 ],
                 [
                     {"text": "➕ Добавить поиск", "callback_data": "menu_add"},
@@ -269,10 +279,16 @@ class AvitoTelegramBot:
         watch_status = "🟢 ВКЛ" if self.monitoring_active else "🔴 ВЫКЛ"
         searches = list_searches()
         text = (
-            "👁️ <b>Смотрящий за Авито на связи!</b>\n\n"
-            f"• Мониторинг: <b>{watch_status}</b>\n"
-            f"• Активных поисков: <b>{len(searches)}</b>\n\n"
-            "Выберите нужное действие кнопками ниже 👇"
+            "👁️ <b>СМОТРЯЩИЙ ЗА АВИТО // RADAR 2.0</b>\n\n"
+            "⚡ <b>Интерактивный терминал готов к работе!</b>\n"
+            "В приложении доступна вся аналитика рынка без необходимости скачивать Excel:\n"
+            "• 🎴 <b>Карточки</b> с подсветкой топ-выгоды и цен\n"
+            "• 📊 <b>Режим таблицы</b> (полная замена Excel на экране iPhone)\n"
+            "• 🛡 <b>Фильтр кликбейтов</b> и сборных лотов\n"
+            "• ★ <b>Избранное</b> и быстрый переход на Авито\n\n"
+            f"📡 Статус мониторинга: <b>{watch_status}</b>\n"
+            f"🎯 Активных поисков: <b>{len(searches)}</b>\n\n"
+            "Нажмите кнопку ниже, чтобы открыть терминал 👇"
         )
         self.render_menu(chat_id, text, self.main_menu_keyboard(), message_id=message_id)
 
@@ -913,6 +929,44 @@ def start_healthcheck_server() -> None:
                 self.end_headers()
                 self.wfile.write(b'{"status":"running","bot":"Avito Radar"}\n')
                 return
+
+            self.send_response(404)
+            self.end_headers()
+
+        def do_POST(self) -> None:
+            path = self.path.split("?")[0]
+            if path == "/api/searches":
+                try:
+                    content_length = int(self.headers.get("Content-Length", 0))
+                    body = self.rfile.read(content_length).decode("utf-8")
+                    req_data = json.loads(body)
+                    query = req_data.get("query", "").strip()
+                    city = req_data.get("city", "chelyabinsk").strip()
+                    min_price = int(req_data.get("min_price") or 0)
+                    if query:
+                        city_slug = transliterate(city).replace(" ", "_")
+                        clean_q = transliterate(query).replace(" ", "_")
+                        c_name = re.sub(r"[^a-z0-9_-]+", "_", f"{clean_q}_{city_slug}").strip("_")
+                        encoded_q = urllib.parse.quote(query)
+                        target_url = f"https://www.avito.ru/{city_slug}?q={encoded_q}"
+                        if min_price > 0:
+                            target_url += f"&pmin={min_price}"
+                        cl = AvitoClient()
+                        create_search_from_url(cl, target_url, custom_name=c_name)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(b'{"ok": true}\n')
+                    return
+                except Exception as exc:
+                    logger.warning("Error creating search from API: %s", exc)
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"ok": False, "error": str(exc)}).encode("utf-8"))
+                    return
 
             self.send_response(404)
             self.end_headers()

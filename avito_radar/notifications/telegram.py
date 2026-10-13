@@ -80,18 +80,26 @@ def auto_detect_chat_id(token: str) -> tuple[int, str]:
 
 
 def format_ad_message(search_title: str, item: ParsedItem) -> str:
+    is_top_deal = item.market_diff_percent and item.market_diff_percent <= -12 and not item.is_combo_listing
+    header = f"🔥 <b>НАЙДЕН ВЫГОДНЫЙ ЛОТ ({item.market_diff_percent}%)</b>" if is_top_deal else f"🔔 <b>{html.escape(item.title)}</b>"
+
     lines = [
-        f"🔔 <b>{html.escape(item.title)}</b>",
+        header,
+        f"📌 <b>{html.escape(item.title)}</b>" if is_top_deal else "",
         f"💰 <b>{html.escape(item.price_formatted)}</b>",
     ]
+    lines = [l for l in lines if l]
 
     if item.market_price:
         market_str = f"{item.market_price:,} ₽".replace(",", " ")
-        diff_str = f"{item.market_diff_percent}%" if item.market_diff_percent else ""
-        if (item.market_diff_percent or 0) < 0:
-            lines.append(f"🔥 <i>Ниже рынка на {abs(item.market_diff_percent or 0)}% (рынок ~{market_str})</i>")
+        if item.is_combo_listing:
+            real_str = f"{item.real_price_in_desc:,} ₽".replace(",", " ") if item.real_price_in_desc else "в тексте"
+            lines.append(f"⚠️ <i>Внимание: в описании целевой товар от ~{real_str}</i>")
+        elif (item.market_diff_percent or 0) < 0:
+            diff_abs = abs(round(item.market_diff_percent or 0, 1))
+            lines.append(f"⚡ <i>Ниже рынка на {diff_abs}% (оценка рынка ~{market_str})</i>")
         else:
-            lines.append(f"📊 <i>Рыночная цена ~{market_str} ({diff_str})</i>")
+            lines.append(f"📊 <i>Рыночная цена ~{market_str} ({item.market_diff_percent:+.1f}%)</i>")
 
     loc_parts = []
     if item.city:
@@ -108,16 +116,15 @@ def format_ad_message(search_title: str, item: ParsedItem) -> str:
     if item.seller_rating:
         seller_info += f" (⭐ {item.seller_rating})"
     if item.closed_listings is not None:
-        seller_info += f", сделок: {item.closed_listings}"
+        seller_info += f", {item.closed_listings} сделок"
     lines.append(f"👤 {html.escape(seller_info)}")
 
-    if item.total_views is not None:
-        lines.append(f"👁 Просмотров: {item.total_views} (+{item.today_views or 0} сегодня)")
-
     if item.tags:
-        lines.append("🏷 " + " · ".join(html.escape(t) for t in item.tags))
+        clean_tags = [t for t in item.tags if not t.startswith("🔥 Выгодно")]
+        if clean_tags:
+            lines.append("🏷 " + " · ".join(html.escape(t) for t in clean_tags[:3]))
 
-    lines.append(f'\n👉 <a href="{html.escape(item.url)}">Открыть на Авито</a>')
+    lines.append(f"\n<i>⚡ Откройте терминал для полной аналитики и сравнения лотов</i>")
     lines.append(f"<i>Поиск: #{html.escape(search_title.replace(' ', '_'))}</i>")
 
     return "\n".join(lines)
