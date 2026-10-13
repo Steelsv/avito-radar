@@ -243,7 +243,7 @@ class AvitoTelegramBot:
 
     def send_photo_alert(self, chat_id: int, item: ParsedItem, search_title: str) -> None:
         caption = format_ad_message(search_title, item)
-        miniapp_url = os.environ.get("MINI_APP_URL", "https://steelsv.github.io/avito-radar/")
+        miniapp_url = os.environ.get("MINI_APP_URL", "https://avito-radar.onrender.com/")
         kb = {
             "inline_keyboard": [
                 [
@@ -278,7 +278,7 @@ class AvitoTelegramBot:
     # --- Menus and Keyboards ---
 
     def main_menu_keyboard(self) -> dict[str, Any]:
-        miniapp_url = os.environ.get("MINI_APP_URL", "https://steelsv.github.io/avito-radar/")
+        miniapp_url = os.environ.get("MINI_APP_URL", "https://avito-radar.onrender.com/")
         return {
             "inline_keyboard": [
                 [
@@ -877,7 +877,7 @@ def start_healthcheck_server() -> None:
         def do_GET(self) -> None:
             path = self.path.split("?")[0]
             if path in ("/", "/index.html"):
-                html_path = Path("web/index.html") if Path("web/index.html").exists() else Path("index.html")
+                html_path = Path("index.html") if Path("index.html").exists() else (Path("web/index.html") if Path("web/index.html").exists() else Path("frontend/index.html"))
                 if html_path.exists():
                     data = html_path.read_bytes()
                     self.send_response(200)
@@ -970,7 +970,7 @@ def start_healthcheck_server() -> None:
             # Static file serving fallback (js, css, images, etc.)
             rel_path = path.lstrip("/")
             if rel_path:
-                for search_dir in [Path("frontend"), Path("web"), Path(".")]:
+                for search_dir in [Path("."), Path("frontend"), Path("web")]:
                     candidate = (search_dir / rel_path).resolve()
                     if candidate.is_file():
                         ext = candidate.suffix.lower()

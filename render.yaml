@@ -12,5 +12,5 @@ services:
       - key: TELEGRAM_CHAT_ID
         sync: false
       - key: MINI_APP_URL
-        value: https://steelsv.github.io/avito-radar/
+        value: https://avito-radar.onrender.com/
     autoDeploy: true

@@ -176,15 +176,17 @@ const TelegramService = {
 // ==========================================================================
 // 4. API Service & Offline Cache
 // ==========================================================================
-const BASE_URL = window.location.origin;
+const API_BASE_URL = (typeof window !== 'undefined' && (window.location.hostname.includes('github.io') || (window.location.hostname === 'localhost' && window.location.port !== '7860')))
+  ? 'https://avito-radar.onrender.com'
+  : (typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://avito-radar.onrender.com');
 
 const ApiService = {
   async getSearches() {
     try {
-      const res = await fetch(`${BASE_URL}/api/searches`);
+      const res = await fetch(`${API_BASE_URL}/api/searches`);
       if (res.ok) {
         const data = await res.json();
-        if (data.searches && Array.isArray(data.searches) && data.searches.length > 0) {
+        if (data.searches && Array.isArray(data.searches)) {
           SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(data.searches));
           return data.searches;
         }
@@ -198,42 +200,16 @@ const ApiService = {
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       } catch (_) {}
     }
 
-    // Fallback default searches
-    return [
-      {
-        id: 'rx6700_xt_chelyabinsk',
-        query: 'RX 6700 XT',
-        city: 'Челябинск',
-        minPrice: 20000,
-        filters: { noDefects: true },
-        isActive: true
-      },
-      {
-        id: 'rtx4050_chelyabinsk',
-        query: 'Ноутбук RTX 4050',
-        city: 'Челябинск',
-        minPrice: 40000,
-        filters: { noDefects: true },
-        isActive: true
-      },
-      {
-        id: 'rtx_4070_chelyabinsk',
-        query: 'RTX 4070',
-        city: 'Челябинск',
-        minPrice: 35000,
-        filters: { noDefects: true },
-        isActive: true
-      }
-    ];
+    return [];
   },
 
   async createSearch(payload) {
     try {
-      const res = await fetch(`${BASE_URL}/api/searches`, {
+      const res = await fetch(`${API_BASE_URL}/api/searches`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -285,10 +261,10 @@ const ApiService = {
 
   async deleteSearch(id) {
     try {
-      await fetch(`${BASE_URL}/api/searches/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await fetch(`${API_BASE_URL}/api/searches/${encodeURIComponent(id)}`, { method: 'DELETE' });
     } catch (_) {}
     try {
-      await fetch(`${BASE_URL}/api/searches/delete`, {
+      await fetch(`${API_BASE_URL}/api/searches/delete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: id, id: id })
@@ -303,7 +279,7 @@ const ApiService = {
 
   async triggerScan(id) {
     try {
-      const res = await fetch(`${BASE_URL}/api/searches/scan`, {
+      const res = await fetch(`${API_BASE_URL}/api/searches/scan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: id, id: id })
@@ -318,7 +294,7 @@ const ApiService = {
     try {
       const params = new URLSearchParams();
       if (filters.includeDismissed) params.append('includeDismissed', 'true');
-      const res = await fetch(`${BASE_URL}/api/lots?${params.toString()}`);
+      const res = await fetch(`${API_BASE_URL}/api/lots?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         if (data.lots && Array.isArray(data.lots)) {
@@ -347,39 +323,6 @@ const ApiService = {
       } catch (_) {}
     }
 
-    // Initial embedded data fallback
-    if (window.__INITIAL_DATA__) {
-      const all = [];
-      Object.entries(window.__INITIAL_DATA__).forEach(([sId, sData]) => {
-        (sData.items || []).forEach(it => {
-          all.push({
-            id: String(it.id),
-            searchId: sId,
-            avitoUrl: it.url,
-            title: it.title,
-            price: it.price,
-            marketPrice: it.market_price || 0,
-            discount: it.market_diff_percent || 0,
-            seller: {
-              name: it.seller_name || 'Частное лицо',
-              type: it.seller_type === 'Компания' ? 'business' : 'private',
-              rating: it.seller_rating,
-              location: it.address || it.city || 'Челябинск'
-            },
-            publishedText: it.published_text || 'сегодня',
-            images: it.images || [],
-            description: it.description || '',
-            tags: it.tags || [],
-            badges: it.badges || [],
-            isComboListing: it.is_combo_listing || false,
-            realPriceInDesc: it.real_price_in_desc || null,
-            isDismissed: false
-          });
-        });
-      });
-      return all;
-    }
-
     return [];
   },
 
@@ -390,7 +333,7 @@ const ApiService = {
     SafeStorage.setItem('avitoradar_dismissed_ids', JSON.stringify(Array.from(dismissed)));
 
     try {
-      await fetch(`${BASE_URL}/api/lots/${strId}/dismiss`, { method: 'POST' });
+      await fetch(`${API_BASE_URL}/api/lots/${strId}/dismiss`, { method: 'POST' });
     } catch (_) {}
     return true;
   },
@@ -402,7 +345,7 @@ const ApiService = {
     SafeStorage.setItem('avitoradar_dismissed_ids', JSON.stringify(Array.from(dismissed)));
 
     try {
-      await fetch(`${BASE_URL}/api/lots/${strId}/restore`, { method: 'POST' });
+      await fetch(`${API_BASE_URL}/api/lots/${strId}/restore`, { method: 'POST' });
     } catch (_) {}
     return true;
   },
@@ -479,6 +422,7 @@ function initDOM() {
 function setViewMode(mode) {
   TelegramService.haptic('medium');
   State.viewMode = mode;
+  if (!DOM.lotsContainer) initDOM();
 
   ['cards', 'table', 'fav', 'searches'].forEach(m => {
     const btn = document.getElementById(`tab-${m}`);
@@ -494,6 +438,7 @@ function setViewMode(mode) {
 function setFilterChip(filter) {
   TelegramService.haptic('light');
   State.activeFilter = filter;
+  if (!DOM.lotsContainer) initDOM();
 
   ['all', 'deals', 'private', 'delivery', 'nodefects', 'dismissed'].forEach(f => {
     const chip = document.getElementById(`chip-${f}`);
@@ -554,6 +499,8 @@ async function handleConfirmDelete() {
 
   await ApiService.deleteSearch(id);
   State.searches = State.searches.filter(s => s.id !== id);
+  State.lots = State.lots.filter(l => l.searchId !== id);
+  SafeStorage.setItem('avitoradar_lots_cache', JSON.stringify(State.lots));
 
   if (State.currentSearchId === id) {
     State.currentSearchId = 'all';
@@ -799,38 +746,68 @@ function getVisibleLots() {
 }
 
 function renderView() {
+  if (!DOM.lotsContainer) initDOM();
   updateStats();
 
   if (State.viewMode === 'searches') {
-    DOM.lotsContainer?.classList.add('hidden');
-    DOM.tableWrapper?.classList.add('hidden');
-    DOM.emptyState?.classList.add('hidden');
-    DOM.searchesSection?.classList.remove('hidden');
+    if (DOM.lotsContainer) { DOM.lotsContainer.style.display = 'none'; DOM.lotsContainer.classList.add('hidden'); }
+    if (DOM.tableWrapper) { DOM.tableWrapper.style.display = 'none'; DOM.tableWrapper.classList.add('hidden'); }
+    if (DOM.emptyState) { DOM.emptyState.style.display = 'none'; DOM.emptyState.classList.add('hidden'); }
+    if (DOM.searchesSection) { DOM.searchesSection.style.display = 'block'; DOM.searchesSection.classList.remove('hidden'); }
     renderSearchesManager();
     return;
   }
 
-  DOM.searchesSection?.classList.add('hidden');
+  if (DOM.searchesSection) {
+    DOM.searchesSection.style.display = 'none';
+    DOM.searchesSection.classList.add('hidden');
+  }
 
   const visible = getVisibleLots();
 
   if (visible.length === 0) {
-    DOM.lotsContainer?.classList.add('hidden');
-    DOM.tableWrapper?.classList.add('hidden');
-    DOM.emptyState?.classList.remove('hidden');
+    if (DOM.lotsContainer) {
+      DOM.lotsContainer.style.display = 'none';
+      DOM.lotsContainer.classList.add('hidden');
+      DOM.lotsContainer.innerHTML = '';
+    }
+    if (DOM.tableWrapper) {
+      DOM.tableWrapper.style.display = 'none';
+      DOM.tableWrapper.classList.add('hidden');
+      if (DOM.tableBody) DOM.tableBody.innerHTML = '';
+    }
+    if (DOM.emptyState) {
+      DOM.emptyState.style.display = 'block';
+      DOM.emptyState.classList.remove('hidden');
+    }
     renderEmptyState();
     return;
   }
 
-  DOM.emptyState?.classList.add('hidden');
+  if (DOM.emptyState) {
+    DOM.emptyState.style.display = 'none';
+    DOM.emptyState.classList.add('hidden');
+  }
 
   if (State.viewMode === 'table') {
-    DOM.lotsContainer?.classList.add('hidden');
-    DOM.tableWrapper?.classList.remove('hidden');
+    if (DOM.lotsContainer) {
+      DOM.lotsContainer.style.display = 'none';
+      DOM.lotsContainer.classList.add('hidden');
+    }
+    if (DOM.tableWrapper) {
+      DOM.tableWrapper.style.display = 'block';
+      DOM.tableWrapper.classList.remove('hidden');
+    }
     renderTableView(visible);
   } else {
-    DOM.tableWrapper?.classList.add('hidden');
-    DOM.lotsContainer?.classList.remove('hidden');
+    if (DOM.tableWrapper) {
+      DOM.tableWrapper.style.display = 'none';
+      DOM.tableWrapper.classList.add('hidden');
+    }
+    if (DOM.lotsContainer) {
+      DOM.lotsContainer.style.display = 'grid';
+      DOM.lotsContainer.classList.remove('hidden');
+    }
     renderCardsView(visible);
   }
 }

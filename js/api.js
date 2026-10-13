@@ -2,7 +2,9 @@
  * AvitoRadar — API Client & Offline-first Cache Layer
  */
 
-const BASE_URL = window.location.origin;
+const BASE_URL = (typeof window !== 'undefined' && (window.location.hostname.includes('github.io') || (window.location.hostname === 'localhost' && window.location.port !== '7860')))
+  ? 'https://avito-radar.onrender.com'
+  : (typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://avito-radar.onrender.com');
 
 export const ApiService = {
   // --- Searches ---
@@ -27,33 +29,7 @@ export const ApiService = {
       try { return JSON.parse(cached); } catch (_) {}
     }
 
-    // Fallback default searches
-    return [
-      {
-        id: 'rx6700_xt_chelyabinsk',
-        query: 'RX 6700 XT',
-        city: 'Челябинск',
-        minPrice: 20000,
-        filters: { noDefects: true },
-        isActive: true
-      },
-      {
-        id: 'rtx4050_chelyabinsk',
-        query: 'Ноутбук RTX 4050',
-        city: 'Челябинск',
-        minPrice: 40000,
-        filters: { noDefects: true },
-        isActive: true
-      },
-      {
-        id: 'rtx_4070_chelyabinsk',
-        query: 'RTX 4070',
-        city: 'Челябинск',
-        minPrice: 35000,
-        filters: { noDefects: true },
-        isActive: true
-      }
-    ];
+    return [];
   },
 
   async createSearch(payload) {
@@ -155,39 +131,6 @@ export const ApiService = {
         if (filters.searchId && filters.searchId !== 'all') lots = lots.filter(l => l.searchId === filters.searchId);
         return lots;
       } catch (_) {}
-    }
-
-    // Embed initial data fallback from window.__INITIAL_DATA__ if available
-    if (window.__INITIAL_DATA__) {
-      const all = [];
-      Object.entries(window.__INITIAL_DATA__).forEach(([sId, sData]) => {
-        (sData.items || []).forEach(it => {
-          all.push({
-            id: String(it.id),
-            searchId: sId,
-            avitoUrl: it.url,
-            title: it.title,
-            price: it.price,
-            marketPrice: it.market_price || 0,
-            discount: it.market_diff_percent || 0,
-            seller: {
-              name: it.seller_name || 'Частное лицо',
-              type: it.seller_type === 'Компания' ? 'business' : 'private',
-              rating: it.seller_rating,
-              location: it.address || it.city || 'Челябинск'
-            },
-            publishedText: it.published_text || 'сегодня',
-            images: it.images || [],
-            description: it.description || '',
-            tags: it.tags || [],
-            badges: it.badges || [],
-            isComboListing: it.is_combo_listing || false,
-            realPriceInDesc: it.real_price_in_desc || null,
-            isDismissed: false
-          });
-        });
-      });
-      return all;
     }
 
     return [];

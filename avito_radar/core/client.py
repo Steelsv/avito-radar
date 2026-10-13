@@ -36,8 +36,8 @@ ITEMS_API_URL = f"{BASE_URL}/web/1/js/items"
 POW_GET_URL = f"{BASE_URL}/web/3/firewallPow/get"
 POW_VERIFY_URL = f"{BASE_URL}/web/3/firewallPow/verify"
 
-DEFAULT_DELAY_SECONDS = 20.0
-IP_BLOCK_WAIT_SECONDS = 300
+DEFAULT_DELAY_SECONDS = 3.0
+IP_BLOCK_WAIT_SECONDS = 15
 MAX_POW_RETRIES = 3
 MAX_SESSION_RESETS = 3
 PAGE_SIZE = 50
@@ -145,20 +145,7 @@ class AvitoClient:
 
     def _ensure_session(self, referer: str) -> None:
         if self.session is None:
-            while True:
-                self.session = self._new_session(referer)
-                # Test catalog connection
-                try:
-                    kind, _ = self._request(referer, is_document=True)
-                    if kind == "ok":
-                        return
-                    self.log("IP_BLOCK", {"wait_seconds": IP_BLOCK_WAIT_SECONDS, "reason": kind})
-                    self.session = None
-                    time.sleep(IP_BLOCK_WAIT_SECONDS)
-                except Exception as exc:
-                    self.log("SESSION_ERROR", {"error": str(exc)})
-                    self.session = None
-                    time.sleep(10)
+            self.session = self._new_session(referer)
 
     def _classify_response(self, response: Any) -> str:
         status = response.status_code
