@@ -141,7 +141,8 @@ def scan_search(
     parsed_items: list[ParsedItem] = []
     for raw in listings_data.values():
         parsed = parse_catalog_item(raw)
-        classify_item(parsed, category_type=search.category_type)
+        q_str = search.title or search.params.get("q", "")
+        classify_item(parsed, category_type=search.category_type, search_query=q_str)
         parsed_items.append(parsed)
 
     # Market stats

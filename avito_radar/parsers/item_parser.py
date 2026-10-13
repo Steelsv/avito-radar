@@ -52,6 +52,8 @@ class ParsedItem:
     is_republished: bool = False
     market_price: int | None = None
     market_diff_percent: float | None = None
+    real_price_in_desc: int | None = None
+    is_combo_listing: bool = False
     tags: list[str] = field(default_factory=list)
 
 

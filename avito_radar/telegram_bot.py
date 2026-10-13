@@ -720,7 +720,8 @@ class AvitoTelegramBot:
 
                             # New listing!
                             parsed = parse_catalog_item(raw)
-                            classify_item(parsed, category_type=s.category_type)
+                            q_str = s.title or s.params.get("q", "")
+                            classify_item(parsed, category_type=s.category_type, search_query=q_str)
 
                             # Filter private only
                             if s.private_only and any("Агентство" in t or "Магазин" in t for t in parsed.tags):
@@ -740,7 +741,11 @@ class AvitoTelegramBot:
                                     continue
 
                             # Calculate market diff
-                            parsed_list = [parse_catalog_item(it) for it in listings.values()]
+                            parsed_list = []
+                            for it in listings.values():
+                                p_it = parse_catalog_item(it)
+                                classify_item(p_it, category_type=s.category_type, search_query=q_str)
+                                parsed_list.append(p_it)
                             annotate_market_prices(
                                 parsed_list,
                                 group_key_fn=lambda x: extract_goods_group(x.title) if s.category_type == "goods" else "all",

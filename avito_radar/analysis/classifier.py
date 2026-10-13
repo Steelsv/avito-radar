@@ -36,7 +36,10 @@ OWNER_TEXT_RE = re.compile(
 DEFECT_RE = re.compile(
     r"(?<!не\s)бит(?:ый|ая|ое|ые)\b|заблок|блокировк|icloud|айклауд|аклауд|"
     r"на\s+запчаст|на\s+разбор|под\s+восстановл|не\s+включ|не\s+работает|"
-    r"разбит|треснут|утоплен|после\s+воды|залит|не\s+ловит|плата\s+мертв|донор",
+    r"разбит|треснут|утоплен|после\s+воды|залит|не\s+ловит|плата\s+мертв|донор|"
+    r"условно\s*рабоч|проблем\w*\s+с\s+драйвер|кернел|kernel(?:\s*141)?|отвал|артефакт|"
+    r"полос\w*\s+на\s+экран|черн\w*\s+экран|не\s+выводит|прогрет|после\s+майнинг\w*\s+не\s+работ|"
+    r"вылетает|код\s*43|ошибк\w*\s+43",
     re.I,
 )
 
@@ -45,9 +48,26 @@ PARTS_AND_ACCESSORIES_RE = re.compile(
     r"\b(?:запчаст\w*|видеопамят\w*|чип\w*|чипы|распайк\w*|донор\w*|на\s+донор|кулер\w*|"
     r"вентилятор\w*|охлажден\w*|радиатор\w*|бэкплейт\w*|райзер\w*|кронштейн\w*|"
     r"болтик\w*|винтик\w*|винты|коробк\w*\s+от|коробка|чехол|термопрокладк\w*|термопаст\w*|"
-    r"подставк\w*|кабел\w*|переходник\w*|текстолит|плата\s+без)\b",
+    r"подставк\w*|кабел\w*|переходник\w*|текстолит|плата\s+без|"
+    r"оперативн\w*\s+памят\w*|память\s+ddr\d|ddr[2345]|блок\w*\s+питания|материнск\w*\s+плат\w*|корпус\w*|ssd|hdd|жестк\w*\s+диск)\b",
     re.I,
 )
+
+# Multi-item listing / price list patterns
+COMBO_KEYWORDS_RE = re.compile(
+    r"\b(?:цена\s+от|цены\s+от|стоимость\s+от|цены?\s+в\s+описании|прайс|список\s+(?:в\s+описании|ниже)|"
+    r"цена\s+указана\s+за|цена\s+за\s+(?:самый|минимальн|штук)|в\s+наличии\s+разны|в\s+наличии\s+список)\b",
+    re.I,
+)
+NUMBERED_PRICE_LIST_RE = re.compile(
+    r"(?:^|\n)\s*(?:\d+[\.\)]|[-•*])\s+[^\n]+?(?:\d[\d\s]{2,7})\s*(?:руб|р\b|₽)",
+    re.I,
+)
+PLURAL_CATEGORIES_RE = re.compile(
+    r"\b(?:видеокарты|телефоны|ноутбуки|процессоры|комплектующие)\b",
+    re.I,
+)
+PRICE_IN_TEXT_RE = re.compile(r"(\d[\d\s]{2,7})\s*(?:руб|р\b|₽)", re.I)
 
 # PC & Laptop vs Standalone GPU/Phone
 PC_BUILD_RE = re.compile(
@@ -71,7 +91,38 @@ def extract_goods_group(title: str) -> str:
     return f"{model}, {mem}" if mem else model
 
 
-def classify_item(item: ParsedItem, category_type: str = "goods") -> None:
+def extract_desc_prices_for_query(description: str, query: str) -> list[int]:
+    """Extract specific prices associated with the target model from the description."""
+    if not description or not query:
+        return []
+
+    num_matches = re.findall(r"\d{2,5}", query)
+    found_prices: list[int] = []
+
+    for line in description.split("\n"):
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+
+        matches_model = False
+        if num_matches:
+            if any(num in line_clean for num in num_matches):
+                matches_model = True
+        else:
+            words = [w for w in re.split(r"[\s_-]+", query.lower()) if len(w) >= 3]
+            if words and any(w in line_clean.lower() for w in words):
+                matches_model = True
+
+        if matches_model:
+            for p_str in PRICE_IN_TEXT_RE.findall(line_clean):
+                clean_num = int(re.sub(r"\s+", "", p_str))
+                if clean_num >= 1000:
+                    found_prices.append(clean_num)
+
+    return found_prices
+
+
+def classify_item(item: ParsedItem, category_type: str = "goods", search_query: str = "") -> None:
     """Analyze item and attach classification tags."""
     seller_label_low = item.seller_type.lower()
     full_text = f"{item.title} {item.description}".lower()
@@ -114,6 +165,34 @@ def classify_item(item: ParsedItem, category_type: str = "goods") -> None:
         if item.price and item.price < 1000:
             item.tags.append("⚠️ Подозрительная цена (кликбейт / запчасть)")
 
+        # Check combo / multi-item listing / price discrepancies in description
+        is_combo = False
+        numbered_matches = NUMBERED_PRICE_LIST_RE.findall(item.description)
+        if len(numbered_matches) >= 2 or COMBO_KEYWORDS_RE.search(full_text):
+            is_combo = True
+        elif PLURAL_CATEGORIES_RE.search(item.title.lower()):
+            is_combo = True
+
+        # Try extracting model-specific prices from description if search_query is available
+        desc_prices = extract_desc_prices_for_query(item.description, search_query) if search_query else []
+
+        if desc_prices and item.price:
+            real_min_p = min(desc_prices)
+            # If listing price is significantly lower than real model price in description (e.g. 8000 vs 29000-32500)
+            if item.price < real_min_p * 0.75:
+                item.is_combo_listing = True
+                item.real_price_in_desc = real_min_p
+                item.tags.append("⚠️ Сборное объявление (в описании список)")
+                p_fmt = f"{real_min_p:,}".replace(",", " ")
+                ad_fmt = f"{item.price:,}".replace(",", " ")
+                item.tags.append(f"⚠️ Реальная цена в описании: ~{p_fmt} ₽ (в объявлении {ad_fmt} ₽)")
+            elif is_combo:
+                item.is_combo_listing = True
+                item.tags.append("⚠️ Сборное объявление (в описании список)")
+        elif is_combo:
+            item.is_combo_listing = True
+            item.tags.append("⚠️ Сборное объявление (в описании список цен)")
+
     if any("доставка" in b.lower() for b in item.badges):
         item.tags.append("📦 С доставкой")
 
@@ -124,7 +203,15 @@ def is_likely_fake_or_junk(item: ParsedItem, min_price: int | None = None) -> bo
         return True
     if item.price and item.price < 500:
         return True
+    if getattr(item, "is_combo_listing", False):
+        return True
     for tag in item.tags:
-        if "🔧 Запчасти" in tag or "⚠️ Дефект" in tag or "Подозрительная цена" in tag:
+        if any(bad in tag for bad in (
+            "🔧 Запчасти",
+            "⚠️ Дефект",
+            "Подозрительная цена",
+            "Сборное объявление",
+            "Реальная цена в описании",
+        )):
             return True
     return False
