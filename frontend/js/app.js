@@ -134,8 +134,8 @@ const TelegramService = {
     try {
       tg.ready();
       tg.expand();
-      if (typeof tg.requestFullscreen === 'function') {
-        try { tg.requestFullscreen(); } catch (_) {}
+      if (typeof tg.exitFullscreen === 'function') {
+        try { tg.exitFullscreen(); } catch (_) {}
       }
       tg.headerColor = '#0A0A0B';
       tg.backgroundColor = '#0A0A0B';
