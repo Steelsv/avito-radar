@@ -852,8 +852,25 @@ def start_healthcheck_server() -> None:
         def do_OPTIONS(self) -> None:
             self.send_response(200)
             self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "*")
+            self.end_headers()
+
+        def do_DELETE(self) -> None:
+            path = self.path.split("?")[0]
+            if path.startswith("/api/searches/"):
+                search_id = path.replace("/api/searches/", "").strip()
+                success = False
+                if search_id:
+                    success = delete_search(search_id)
+                    logger.info("Search '%s' deleted via DELETE method (success=%s)", search_id, success)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "id": search_id, "deleted": success}).encode("utf-8"))
+                return
+            self.send_response(404)
             self.end_headers()
 
         def do_GET(self) -> None:
@@ -948,6 +965,37 @@ def start_healthcheck_server() -> None:
                     return
                 except Exception as exc:
                     logger.warning("Error getting lots: %s", exc)
+
+            # Static file serving fallback (js, css, images, etc.)
+            rel_path = path.lstrip("/")
+            if rel_path:
+                for search_dir in [Path("frontend"), Path("web"), Path(".")]:
+                    candidate = (search_dir / rel_path).resolve()
+                    if candidate.is_file():
+                        ext = candidate.suffix.lower()
+                        mime_map = {
+                            ".js": "application/javascript; charset=utf-8",
+                            ".css": "text/css; charset=utf-8",
+                            ".html": "text/html; charset=utf-8",
+                            ".svg": "image/svg+xml",
+                            ".png": "image/png",
+                            ".jpg": "image/jpeg",
+                            ".jpeg": "image/jpeg",
+                            ".json": "application/json; charset=utf-8",
+                            ".woff2": "font/woff2",
+                            ".woff": "font/woff",
+                        }
+                        mime = mime_map.get(ext, "application/octet-stream")
+                        try:
+                            data = candidate.read_bytes()
+                            self.send_response(200)
+                            self.send_header("Content-Type", mime)
+                            self.send_header("Access-Control-Allow-Origin", "*")
+                            self.end_headers()
+                            self.wfile.write(data)
+                            return
+                        except Exception as exc:
+                            logger.debug("Error serving static file %s: %s", candidate, exc)
 
             self.send_response(404)
             self.end_headers()

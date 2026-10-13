@@ -1,7 +1,401 @@
-import { ApiService } from './api.js';
-import { TelegramService } from './telegram.js';
+/**
+ * AvitoRadar — Unified Terminal Client
+ * Standalone bundle with zero external module dependencies.
+ * Works seamlessly in Telegram WebApp (iOS / Android / Desktop) and standalone browsers.
+ */
 
-// Application State
+// ==========================================================================
+// 0. Immediate Global App Object (Ensures inline onclick never fails)
+// ==========================================================================
+window.app = window.app || {};
+
+// ==========================================================================
+// 1. Safe Storage Layer (Guards against iOS WebKit / iframe SecurityError)
+// ==========================================================================
+const SafeStorage = {
+  _mem: new Map(),
+
+  getItem(key) {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.getItem(key);
+      }
+    } catch (_) {}
+    return this._mem.get(key) || null;
+  },
+
+  setItem(key, val) {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(key, val);
+      }
+    } catch (_) {}
+    this._mem.set(key, String(val));
+  },
+
+  removeItem(key) {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem(key);
+      }
+    } catch (_) {}
+    this._mem.delete(key);
+  }
+};
+
+// ==========================================================================
+// 2. City Abbreviation Mapping & Formatting Helpers
+// ==========================================================================
+const CITY_ABBR = {
+  'челябинск': 'ЧЛБ',
+  'chelyabinsk': 'ЧЛБ',
+  'москва': 'МСК',
+  'moskva': 'МСК',
+  'санкт-петербург': 'СПБ',
+  'sankt-peterburg': 'СПБ',
+  'питер': 'СПБ',
+  'екатеринбург': 'ЕКБ',
+  'ekaterinburg': 'ЕКБ',
+  'казань': 'КЗН',
+  'kazan': 'КЗН',
+  'новосибирск': 'НСК',
+  'novosibirsk': 'НСК',
+  'уфа': 'УФА',
+  'ufa': 'УФА',
+  'россия': 'РФ',
+  'вся россия': 'РФ',
+  'rossiya': 'РФ',
+  'сочи': 'СОЧ',
+  'sochi': 'СОЧ',
+  'краснодар': 'КРД',
+  'krasnodar': 'КРД',
+  'тюмень': 'ТМН',
+  'tyumen': 'ТМН',
+  'самара': 'СМР',
+  'samara': 'СМР',
+  'нижний новгород': 'НН',
+  'nizhniy_novgorod': 'НН',
+  'пермь': 'ПРМ',
+  'perm': 'ПРМ',
+  'ростов-на-дону': 'РНД',
+  'rostov': 'РНД',
+  'волгоград': 'ВЛГ',
+  'volgograd': 'ВЛГ',
+  'воронеж': 'ВРЖ',
+  'voronezh': 'ВРЖ',
+  'омск': 'ОМС',
+  'omsk': 'ОМС',
+  'красноярск': 'КРС',
+  'krasnoyarsk': 'КРС'
+};
+
+function getCityAbbr(cityName) {
+  if (!cityName) return 'РФ';
+  const key = String(cityName).trim().toLowerCase();
+  if (CITY_ABBR[key]) return CITY_ABBR[key];
+  for (const [k, abbr] of Object.entries(CITY_ABBR)) {
+    if (key.includes(k) || k.includes(key)) return abbr;
+  }
+  return cityName.replace(/[^a-zA-Zа-яА-Я]/g, '').slice(0, 3).toUpperCase() || 'РФ';
+}
+
+function cleanQueryTitle(query) {
+  if (!query) return '';
+  let q = String(query).trim();
+  const m = q.match(/«([^»]+)»/);
+  if (m) {
+    q = m[1];
+  } else {
+    q = q.replace(/:?\s*объявления\s+(для|в)\s+.*$/i, '')
+         .replace(/объявления\s+в\s+.*$/i, '')
+         .trim();
+  }
+  return q || String(query);
+}
+
+function formatSearchDisplay(search) {
+  if (!search) return '';
+  const abbr = getCityAbbr(search.city);
+  const title = cleanQueryTitle(search.query || search.title || search.id);
+  return `[${abbr}] ${title}`;
+}
+
+// ==========================================================================
+// 3. Telegram WebApp Service
+// ==========================================================================
+const tg = window.Telegram?.WebApp;
+
+const TelegramService = {
+  init() {
+    if (!tg) {
+      console.log('[TelegramService] Running in web browser mode');
+      return;
+    }
+    try {
+      tg.ready();
+      tg.expand();
+      tg.headerColor = '#0A0A0B';
+      tg.backgroundColor = '#0A0A0B';
+      if (tg.isVerticalSwipesEnabled !== undefined) {
+        tg.isVerticalSwipesEnabled = true;
+      }
+    } catch (e) {
+      console.warn('[TelegramService] Init warning:', e);
+    }
+  },
+
+  haptic(type = 'light') {
+    if (!tg?.HapticFeedback) return;
+    try {
+      if (type === 'light') tg.HapticFeedback.impactOccurred('light');
+      else if (type === 'medium') tg.HapticFeedback.impactOccurred('medium');
+      else if (type === 'heavy') tg.HapticFeedback.impactOccurred('heavy');
+      else if (type === 'success') tg.HapticFeedback.notificationOccurred('success');
+      else if (type === 'warning') tg.HapticFeedback.notificationOccurred('warning');
+      else if (type === 'error') tg.HapticFeedback.notificationOccurred('error');
+    } catch (_) {}
+  },
+
+  openLink(url) {
+    this.haptic('medium');
+    if (tg?.openLink) {
+      tg.openLink(url);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  },
+
+  getUser() {
+    return tg?.initDataUnsafe?.user || null;
+  }
+};
+
+// ==========================================================================
+// 4. API Service & Offline Cache
+// ==========================================================================
+const BASE_URL = window.location.origin;
+
+const ApiService = {
+  async getSearches() {
+    try {
+      const res = await fetch(`${BASE_URL}/api/searches`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.searches && Array.isArray(data.searches) && data.searches.length > 0) {
+          SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(data.searches));
+          return data.searches;
+        }
+      }
+    } catch (err) {
+      console.warn('[API] getSearches network call failed, falling back to cache:', err.message);
+    }
+
+    // Check cached searches
+    const cached = SafeStorage.getItem('avitoradar_searches_cache');
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (_) {}
+    }
+
+    // Fallback default searches
+    return [
+      {
+        id: 'rx6700_xt_chelyabinsk',
+        query: 'RX 6700 XT',
+        city: 'Челябинск',
+        minPrice: 20000,
+        filters: { noDefects: true },
+        isActive: true
+      },
+      {
+        id: 'rtx4050_chelyabinsk',
+        query: 'Ноутбук RTX 4050',
+        city: 'Челябинск',
+        minPrice: 40000,
+        filters: { noDefects: true },
+        isActive: true
+      },
+      {
+        id: 'rtx_4070_chelyabinsk',
+        query: 'RTX 4070',
+        city: 'Челябинск',
+        minPrice: 35000,
+        filters: { noDefects: true },
+        isActive: true
+      }
+    ];
+  },
+
+  async createSearch(payload) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/searches`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.search) return data.search;
+      }
+    } catch (err) {
+      console.warn('[API] createSearch API offline, persisting locally:', err.message);
+    }
+
+    const id = `${payload.query.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, '_')}_${payload.city || 'chelyabinsk'}`.replace(/^_+|_+$/g, '');
+    const newSearch = {
+      id: id,
+      query: payload.query,
+      city: payload.city || 'chelyabinsk',
+      minPrice: Number(payload.minPrice) || 0,
+      filters: payload.filters || {},
+      isActive: true,
+      createdAt: Date.now()
+    };
+
+    const existing = await this.getSearches();
+    existing.unshift(newSearch);
+    SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(existing));
+    return newSearch;
+  },
+
+  async deleteSearch(id) {
+    try {
+      await fetch(`${BASE_URL}/api/searches/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch (_) {}
+    try {
+      await fetch(`${BASE_URL}/api/searches/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: id, id: id })
+      });
+    } catch (_) {}
+
+    const existing = await this.getSearches();
+    const updated = existing.filter(s => s.id !== id);
+    SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(updated));
+    return true;
+  },
+
+  async triggerScan(id) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/searches/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: id, id: id })
+      });
+      return res.ok;
+    } catch (_) {
+      return false;
+    }
+  },
+
+  async getLots(filters = {}) {
+    try {
+      const params = new URLSearchParams();
+      if (filters.includeDismissed) params.append('includeDismissed', 'true');
+      const res = await fetch(`${BASE_URL}/api/lots?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.lots && Array.isArray(data.lots)) {
+          const dismissedSet = this.getDismissedIds();
+          data.lots.forEach(l => {
+            if (dismissedSet.has(String(l.id))) l.isDismissed = true;
+          });
+          SafeStorage.setItem('avitoradar_lots_cache', JSON.stringify(data.lots));
+          return data.lots;
+        }
+      }
+    } catch (err) {
+      console.warn('[API] getLots fetch failed, using offline fallback:', err.message);
+    }
+
+    // Cached lots
+    const cached = SafeStorage.getItem('avitoradar_lots_cache');
+    if (cached) {
+      try {
+        let lots = JSON.parse(cached);
+        const dismissedSet = this.getDismissedIds();
+        lots.forEach(l => {
+          if (dismissedSet.has(String(l.id))) l.isDismissed = true;
+        });
+        return lots;
+      } catch (_) {}
+    }
+
+    // Initial embedded data fallback
+    if (window.__INITIAL_DATA__) {
+      const all = [];
+      Object.entries(window.__INITIAL_DATA__).forEach(([sId, sData]) => {
+        (sData.items || []).forEach(it => {
+          all.push({
+            id: String(it.id),
+            searchId: sId,
+            avitoUrl: it.url,
+            title: it.title,
+            price: it.price,
+            marketPrice: it.market_price || 0,
+            discount: it.market_diff_percent || 0,
+            seller: {
+              name: it.seller_name || 'Частное лицо',
+              type: it.seller_type === 'Компания' ? 'business' : 'private',
+              rating: it.seller_rating,
+              location: it.address || it.city || 'Челябинск'
+            },
+            publishedText: it.published_text || 'сегодня',
+            images: it.images || [],
+            description: it.description || '',
+            tags: it.tags || [],
+            badges: it.badges || [],
+            isComboListing: it.is_combo_listing || false,
+            realPriceInDesc: it.real_price_in_desc || null,
+            isDismissed: false
+          });
+        });
+      });
+      return all;
+    }
+
+    return [];
+  },
+
+  async dismissLot(id) {
+    const strId = String(id);
+    const dismissed = this.getDismissedIds();
+    dismissed.add(strId);
+    SafeStorage.setItem('avitoradar_dismissed_ids', JSON.stringify(Array.from(dismissed)));
+
+    try {
+      await fetch(`${BASE_URL}/api/lots/${strId}/dismiss`, { method: 'POST' });
+    } catch (_) {}
+    return true;
+  },
+
+  async restoreLot(id) {
+    const strId = String(id);
+    const dismissed = this.getDismissedIds();
+    dismissed.delete(strId);
+    SafeStorage.setItem('avitoradar_dismissed_ids', JSON.stringify(Array.from(dismissed)));
+
+    try {
+      await fetch(`${BASE_URL}/api/lots/${strId}/restore`, { method: 'POST' });
+    } catch (_) {}
+    return true;
+  },
+
+  getDismissedIds() {
+    try {
+      const raw = SafeStorage.getItem('avitoradar_dismissed_ids');
+      if (raw) return new Set(JSON.parse(raw));
+    } catch (_) {}
+    return new Set();
+  }
+};
+
+// ==========================================================================
+// 5. Application State
+// ==========================================================================
 const State = {
   searches: [],
   currentSearchId: 'all',
@@ -11,105 +405,304 @@ const State = {
   sortMode: 'deal', // 'deal', 'cheap', 'expensive', 'date'
   viewMode: 'cards', // 'cards', 'table', 'fav', 'searches'
   favorites: [],
-  modalLot: null
+  modalLot: null,
+  pendingDeleteId: null
 };
 
-// Initialize favorites
+// Load saved favorites safely
 try {
-  State.favorites = JSON.parse(localStorage.getItem('avitoradar_favorites') || '[]');
+  const savedFavs = SafeStorage.getItem('avitoradar_favorites');
+  if (savedFavs) State.favorites = JSON.parse(savedFavs);
 } catch (_) {}
 
-// UI Selectors
-const DOM = {
-  searchSelector: document.getElementById('searchSelector'),
-  filterInput: document.getElementById('filterInput'),
-  btnClearFilter: document.getElementById('btnClearFilter'),
-  filterChipsRow: document.getElementById('filterChipsRow'),
-  sortSelector: document.getElementById('sortSelector'),
-  statsGrid: document.getElementById('statsGrid'),
-  lotsContainer: document.getElementById('lotsContainer'),
-  tableWrapper: document.getElementById('tableWrapper'),
-  tableBody: document.getElementById('tableBody'),
-  searchesSection: document.getElementById('searchesSection'),
-  searchesList: document.getElementById('searchesList'),
-  emptyState: document.getElementById('emptyState'),
-  modalOverlay: document.getElementById('modalOverlay'),
-  bottomSheet: document.getElementById('bottomSheet'),
-  newSearchModal: document.getElementById('newSearchModal'),
-  deleteModal: document.getElementById('deleteModal'),
-  toastContainer: document.getElementById('toastContainer'),
-  btnRefresh: document.getElementById('btnRefresh'),
-  statMedianPrice: document.getElementById('statMedianPrice'),
-  statDealsCount: document.getElementById('statDealsCount'),
-  statTopDiscount: document.getElementById('statTopDiscount'),
-  statActiveRadars: document.getElementById('statActiveRadars')
-};
-
 // ==========================================================================
-// Initialization
+// 6. DOM Elements Cache
 // ==========================================================================
-document.addEventListener('DOMContentLoaded', async () => {
-  TelegramService.init();
-  setupEventListeners();
-  await loadData();
-});
+let DOM = {};
 
-function setupEventListeners() {
-  // Search selector change
-  DOM.searchSelector?.addEventListener('change', (e) => {
-    TelegramService.haptic('light');
-    State.currentSearchId = e.target.value;
-    renderView();
-  });
-
-  // Keyword input
-  DOM.filterInput?.addEventListener('input', (e) => {
-    State.searchQuery = e.target.value.trim().toLowerCase();
-    if (State.searchQuery) DOM.btnClearFilter?.classList.remove('hidden');
-    else DOM.btnClearFilter?.classList.add('hidden');
-    renderView();
-  });
-
-  DOM.btnClearFilter?.addEventListener('click', () => {
-    TelegramService.haptic('light');
-    DOM.filterInput.value = '';
-    State.searchQuery = '';
-    DOM.btnClearFilter.classList.add('hidden');
-    renderView();
-  });
-
-  // Sort selector
-  DOM.sortSelector?.addEventListener('change', (e) => {
-    TelegramService.haptic('light');
-    State.sortMode = e.target.value;
-    renderView();
-  });
-
-  // Refresh button
-  DOM.btnRefresh?.addEventListener('click', async () => {
-    TelegramService.haptic('medium');
-    DOM.btnRefresh.classList.add('animate-spin');
-    await loadData();
-    DOM.btnRefresh.classList.remove('animate-spin');
-    showToast('Данные синхронизированы', 'success');
-  });
-
-  // Modal Backdrop Close
-  DOM.modalOverlay?.addEventListener('click', closeAllModals);
-
-  // Forms
-  document.getElementById('formNewSearch')?.addEventListener('submit', handleNewSearchSubmit);
-  document.getElementById('btnConfirmDelete')?.addEventListener('click', handleConfirmDelete);
+function initDOM() {
+  DOM = {
+    searchSelector: document.getElementById('searchSelector'),
+    btnDeleteCurrentSearch: document.getElementById('btnDeleteCurrentSearch'),
+    filterInput: document.getElementById('filterInput'),
+    btnClearFilter: document.getElementById('btnClearFilter'),
+    filterChipsRow: document.getElementById('filterChipsRow'),
+    sortSelector: document.getElementById('sortSelector'),
+    statsGrid: document.getElementById('statsGrid'),
+    lotsContainer: document.getElementById('lotsContainer'),
+    tableWrapper: document.getElementById('tableWrapper'),
+    tableBody: document.getElementById('tableBody'),
+    searchesSection: document.getElementById('searchesSection'),
+    searchesList: document.getElementById('searchesList'),
+    emptyState: document.getElementById('emptyState'),
+    modalOverlay: document.getElementById('modalOverlay'),
+    bottomSheet: document.getElementById('bottomSheet'),
+    newSearchModal: document.getElementById('newSearchModal'),
+    deleteModal: document.getElementById('deleteModal'),
+    deleteSearchTitle: document.getElementById('deleteSearchTitle'),
+    btnConfirmDelete: document.getElementById('btnConfirmDelete'),
+    toastContainer: document.getElementById('toastContainer'),
+    btnRefresh: document.getElementById('btnRefresh'),
+    statMedianPrice: document.getElementById('statMedianPrice'),
+    statDealsCount: document.getElementById('statDealsCount'),
+    statTopDiscount: document.getElementById('statTopDiscount'),
+    statActiveRadars: document.getElementById('statActiveRadars')
+  };
 }
 
 // ==========================================================================
-// Data Fetching & Sync
+// 7. Core Controllers & View Switchers
+// ==========================================================================
+function setViewMode(mode) {
+  TelegramService.haptic('medium');
+  State.viewMode = mode;
+
+  ['cards', 'table', 'fav', 'searches'].forEach(m => {
+    const btn = document.getElementById(`tab-${m}`);
+    if (btn) {
+      if (m === mode) btn.classList.add('active');
+      else btn.classList.remove('active');
+    }
+  });
+
+  renderView();
+}
+
+function setFilterChip(filter) {
+  TelegramService.haptic('light');
+  State.activeFilter = filter;
+
+  ['all', 'deals', 'private', 'delivery', 'nodefects', 'dismissed'].forEach(f => {
+    const chip = document.getElementById(`chip-${f}`);
+    if (chip) {
+      if (f === filter) chip.classList.add('active');
+      else chip.classList.remove('active');
+    }
+  });
+
+  renderView();
+}
+
+function selectSearch(id) {
+  TelegramService.haptic('light');
+  State.currentSearchId = id;
+  if (DOM.searchSelector) DOM.searchSelector.value = id;
+  updateDeleteCurrentButtonVisibility();
+  setViewMode('cards');
+}
+
+function updateDeleteCurrentButtonVisibility() {
+  if (!DOM.btnDeleteCurrentSearch) return;
+  if (State.currentSearchId && State.currentSearchId !== 'all') {
+    DOM.btnDeleteCurrentSearch.classList.remove('hidden');
+    const curr = State.searches.find(s => s.id === State.currentSearchId);
+    if (curr) {
+      DOM.btnDeleteCurrentSearch.title = `Удалить радар ${formatSearchDisplay(curr)}`;
+    }
+  } else {
+    DOM.btnDeleteCurrentSearch.classList.add('hidden');
+  }
+}
+
+function promptDeleteCurrent() {
+  if (!State.currentSearchId || State.currentSearchId === 'all') {
+    showToast('Выберите радар для удаления', 'info');
+    return;
+  }
+  const curr = State.searches.find(s => s.id === State.currentSearchId);
+  const title = curr ? formatSearchDisplay(curr) : State.currentSearchId;
+  promptDelete(State.currentSearchId, title);
+}
+
+function promptDelete(id, title) {
+  TelegramService.haptic('medium');
+  State.pendingDeleteId = id;
+  const titleEl = document.getElementById('deleteSearchTitle');
+  if (titleEl) titleEl.textContent = title;
+  DOM.modalOverlay?.classList.add('open');
+  DOM.deleteModal?.classList.add('open');
+}
+
+async function handleConfirmDelete() {
+  if (!State.pendingDeleteId) return;
+  TelegramService.haptic('heavy');
+  const id = State.pendingDeleteId;
+  closeAllModals();
+
+  await ApiService.deleteSearch(id);
+  State.searches = State.searches.filter(s => s.id !== id);
+
+  if (State.currentSearchId === id) {
+    State.currentSearchId = 'all';
+  }
+
+  populateSearchSelector();
+  updateDeleteCurrentButtonVisibility();
+  renderView();
+  showToast('Радар удален из отслеживания', 'info');
+}
+
+async function scanSearch(id) {
+  TelegramService.haptic('medium');
+  showToast('Сканирование Авито...', 'info');
+  await ApiService.triggerScan(id);
+  await loadData();
+  showToast('Каталог обновлен!', 'success');
+}
+
+function openNewSearchModal() {
+  TelegramService.haptic('medium');
+  DOM.modalOverlay?.classList.add('open');
+  DOM.newSearchModal?.classList.add('open');
+}
+
+function closeAllModals() {
+  TelegramService.haptic('light');
+  DOM.modalOverlay?.classList.remove('open');
+  DOM.bottomSheet?.classList.remove('open');
+  DOM.newSearchModal?.classList.remove('open');
+  DOM.deleteModal?.classList.remove('open');
+  State.pendingDeleteId = null;
+}
+
+// ==========================================================================
+// 8. Lots, Favorites, Vanish
+// ==========================================================================
+function toggleFav(event, lotId) {
+  if (event) event.stopPropagation();
+  TelegramService.haptic('light');
+  const strId = String(lotId);
+  const idx = State.favorites.indexOf(strId);
+  if (idx > -1) {
+    State.favorites.splice(idx, 1);
+  } else {
+    State.favorites.push(strId);
+  }
+  SafeStorage.setItem('avitoradar_favorites', JSON.stringify(State.favorites));
+  updateStats();
+  renderView();
+}
+
+async function vanishLot(event, lotId) {
+  if (event) event.stopPropagation();
+  TelegramService.haptic('heavy');
+  const card = document.querySelector(`.lot-card[data-id="${lotId}"]`);
+  if (card) {
+    card.classList.add('vanished');
+    setTimeout(() => {
+      applyVanish(lotId);
+    }, 280);
+  } else {
+    applyVanish(lotId);
+  }
+}
+
+function applyVanish(lotId) {
+  const lot = State.lots.find(l => String(l.id) === String(lotId));
+  if (lot) lot.isDismissed = true;
+  ApiService.dismissLot(lotId);
+  updateStats();
+  renderView();
+  showToast('Объявление скрыто', 'info');
+}
+
+async function restoreLot(event, lotId) {
+  if (event) event.stopPropagation();
+  TelegramService.haptic('success');
+  const lot = State.lots.find(l => String(l.id) === String(lotId));
+  if (lot) lot.isDismissed = false;
+  await ApiService.restoreLot(lotId);
+  updateStats();
+  renderView();
+  showToast('Объявление возвращено в поток', 'success');
+}
+
+function openDetails(event, lotId) {
+  if (event) event.stopPropagation();
+  const lot = State.lots.find(l => String(l.id) === String(lotId));
+  if (lot) openLotModal(lot);
+}
+
+function openLotModal(lot) {
+  TelegramService.haptic('medium');
+  State.modalLot = lot;
+
+  const mTitle = document.getElementById('modalTitle');
+  const mPrice = document.getElementById('modalPrice');
+  const mMarket = document.getElementById('modalMarketPrice');
+  const mDisc = document.getElementById('modalDiscount');
+  const mDesc = document.getElementById('modalDescription');
+  const mSeller = document.getElementById('modalSellerName');
+  const mType = document.getElementById('modalSellerType');
+  const mLoc = document.getElementById('modalLocation');
+  const mDate = document.getElementById('modalDate');
+
+  if (mTitle) mTitle.textContent = lot.title;
+  if (mPrice) mPrice.textContent = `${lot.price.toLocaleString('ru-RU')} ₽`;
+  if (mMarket) mMarket.textContent = lot.marketPrice ? `Оценка рынка: ${lot.marketPrice.toLocaleString('ru-RU')} ₽` : '';
+  if (mDisc) mDisc.textContent = lot.discount ? `${lot.discount}%` : '';
+  if (mDesc) mDesc.textContent = lot.description || 'Описание отсутствует.';
+  if (mSeller) mSeller.textContent = lot.seller.name;
+  if (mType) mType.textContent = lot.seller.type === 'private' ? 'Частное лицо' : 'Компания / Магазин';
+  if (mLoc) mLoc.textContent = lot.seller.location;
+  if (mDate) mDate.textContent = lot.publishedText || 'сегодня';
+
+  const ratingEl = document.getElementById('modalSellerRating');
+  const ratingVal = document.getElementById('modalSellerRatingVal');
+  if (ratingEl && ratingVal) {
+    if (lot.seller.rating) {
+      ratingVal.textContent = lot.seller.rating;
+      ratingEl.style.display = 'inline-flex';
+    } else {
+      ratingEl.style.display = 'none';
+    }
+  }
+
+  const imgEl = document.getElementById('modalMainImg');
+  if (imgEl) {
+    if (lot.images && lot.images.length > 0) {
+      imgEl.src = lot.images[0];
+      imgEl.style.display = 'block';
+    } else {
+      imgEl.style.display = 'none';
+    }
+  }
+
+  const tagsContainer = document.getElementById('modalTags');
+  if (tagsContainer) {
+    tagsContainer.innerHTML = (lot.tags || []).map(t => `<span class="filter-chip" style="height: 26px; font-size: 11px;">${escapeHtml(t)}</span>`).join('');
+  }
+
+  const ctaBtn = document.getElementById('modalAvitoCta');
+  if (ctaBtn) {
+    ctaBtn.onclick = () => TelegramService.openLink(lot.avitoUrl);
+  }
+
+  DOM.modalOverlay?.classList.add('open');
+  DOM.bottomSheet?.classList.add('open');
+}
+
+function openAvito(event, url) {
+  if (event) event.stopPropagation();
+  TelegramService.openLink(url);
+}
+
+function setQueryPreset(q, minP) {
+  const qInput = document.getElementById('newQueryInput');
+  const minInput = document.getElementById('newMinPriceInput');
+  if (qInput) qInput.value = q;
+  if (minInput && minP) minInput.value = minP;
+}
+
+// ==========================================================================
+// 9. Data Fetching & Sync
 // ==========================================================================
 async function loadData() {
   State.searches = await ApiService.getSearches();
   State.lots = await ApiService.getLots({ includeDismissed: true });
 
   populateSearchSelector();
+  updateDeleteCurrentButtonVisibility();
   renderView();
 }
 
@@ -121,19 +714,17 @@ function populateSearchSelector() {
     const opt = document.createElement('option');
     opt.value = s.id;
     const count = State.lots.filter(l => l.searchId === s.id && !l.isDismissed).length;
-    opt.textContent = `${s.query} (${count} шт.)`;
+    const title = formatSearchDisplay(s);
+    opt.textContent = `${title} (${count} шт.)`;
     if (s.id === State.currentSearchId) opt.selected = true;
     DOM.searchSelector.appendChild(opt);
   });
 }
 
-// ==========================================================================
-// Filtering & Calculation
-// ==========================================================================
 function getVisibleLots() {
   let lots = [...State.lots];
 
-  // Search filter
+  // Radar scope filter
   if (State.currentSearchId && State.currentSearchId !== 'all') {
     lots = lots.filter(l => l.searchId === State.currentSearchId);
   }
@@ -161,7 +752,7 @@ function getVisibleLots() {
     lots = lots.filter(l => !(l.tags || []).some(t => t.includes('Дефект') || t.includes('Запчасти') || t.includes('Сборное')));
   }
 
-  // Keyword query
+  // Keyword query filter
   if (State.searchQuery) {
     lots = lots.filter(l => {
       const text = `${l.title} ${l.description} ${l.seller.name} ${l.seller.location}`.toLowerCase();
@@ -169,24 +760,21 @@ function getVisibleLots() {
     });
   }
 
-  // Sort
+  // Sorting
   if (State.sortMode === 'cheap') {
     lots.sort((a, b) => a.price - b.price);
   } else if (State.sortMode === 'expensive') {
     lots.sort((a, b) => b.price - a.price);
   } else if (State.sortMode === 'date') {
-    lots.sort((a, b) => b.postedAt - a.postedAt);
+    lots.sort((a, b) => (b.postedAt || 0) - (a.postedAt || 0));
   } else {
-    // 'deal' (discount)
+    // Discount percent descending (most negative first)
     lots.sort((a, b) => (a.discount || 999) - (b.discount || 999));
   }
 
   return lots;
 }
 
-// ==========================================================================
-// Rendering Dispatcher
-// ==========================================================================
 function renderView() {
   updateStats();
 
@@ -229,30 +817,30 @@ function updateStats() {
     ? activeLots
     : activeLots.filter(l => l.searchId === State.currentSearchId);
 
-  // Clean median
+  // Market Median
   const medianPrice = currentScoped.find(l => l.marketPrice)?.marketPrice || 0;
   if (DOM.statMedianPrice) {
     DOM.statMedianPrice.textContent = medianPrice > 0 ? `${medianPrice.toLocaleString('ru-RU')} ₽` : '—';
   }
 
-  // Deals count
+  // Deals Count
   const dealsCount = currentScoped.filter(l => l.discount <= -12 && !l.isComboListing).length;
   if (DOM.statDealsCount) {
     DOM.statDealsCount.textContent = dealsCount;
   }
 
-  // Top discount
+  // Top Discount
   const topDeal = currentScoped.find(l => l.discount < 0 && !l.isComboListing);
   if (DOM.statTopDiscount) {
     DOM.statTopDiscount.textContent = topDeal ? `${topDeal.discount}%` : '0%';
   }
 
-  // Active radars count
+  // Active Radars Count
   if (DOM.statActiveRadars) {
     DOM.statActiveRadars.textContent = State.searches.length;
   }
 
-  // Fav & Dismissed count badges
+  // Badges
   const favCount = document.getElementById('favCount');
   if (favCount) favCount.textContent = State.favorites.length;
 
@@ -262,7 +850,7 @@ function updateStats() {
 }
 
 // ==========================================================================
-// Lot Cards & Vanish Logic
+// 10. Card View Rendering
 // ==========================================================================
 function renderCardsView(lots) {
   if (!DOM.lotsContainer) return;
@@ -280,6 +868,10 @@ function createLotCard(lot) {
 
   const isDeal = lot.discount <= -12 && !lot.isComboListing;
   const isFav = State.favorites.includes(String(lot.id));
+
+  // Find search for city badge
+  const searchObj = State.searches.find(s => s.id === lot.searchId);
+  const cityAbbr = getCityAbbr(searchObj?.city || lot.seller?.location);
 
   // Image preview
   const photoUrl = (lot.images && lot.images.length > 0) ? lot.images[0] : '';
@@ -309,7 +901,7 @@ function createLotCard(lot) {
   const marketFormatted = lot.marketPrice ? `${lot.marketPrice.toLocaleString('ru-RU')} ₽` : '';
   const diffSign = lot.discount <= 0 ? '' : '+';
 
-  // Vanish button: X
+  // Vanish button: X or restore
   const vanishHtml = lot.isDismissed ? `
     <button class="btn-vanish" onclick="window.app.restoreLot(event, '${lot.id}')" title="Вернуть объявление" style="color: var(--success)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
@@ -323,51 +915,59 @@ function createLotCard(lot) {
     </button>
   `;
 
+  // Secondary badges
+  const pillsHtml = (lot.tags || []).slice(0, 2).map(tag => {
+    let cls = 'badge-subtle';
+    if (tag.includes('Частный')) cls += ' badge-private';
+    if (tag.includes('Сборное') || tag.includes('Дефект')) cls += ' badge-warning';
+    return `<span class="${cls}">${escapeHtml(tag)}</span>`;
+  }).join('');
+
   card.innerHTML = `
-    <div>
-      <div class="card-header-row">
+    ${mediaHtml}
+    <div class="card-header">
+      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+        <span class="city-abbr-tag">[${cityAbbr}]</span>
         ${badgeHtml}
-        <div style="display: flex; align-items: center; gap: 4px;">
-          <span class="caption font-mono">${lot.publishedText || ''}</span>
-          ${vanishHtml}
-        </div>
       </div>
-
-      ${mediaHtml}
-
-      <h3 class="lot-title">${escapeHtml(lot.title)}</h3>
-
-      ${lot.isComboListing ? `
-        <div class="combo-warning-banner">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px; vertical-align: middle;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>В описании целевой товар: <b>${lot.realPriceInDesc ? lot.realPriceInDesc.toLocaleString('ru-RU') + ' ₽' : 'см. текст'}</b></span>
-        </div>
-      ` : ''}
-
-      <div class="price-block">
-        <span class="price-main">${priceFormatted}</span>
-        ${marketFormatted && !lot.isComboListing ? `<span class="price-market">${marketFormatted}</span>` : ''}
-        ${lot.discount && !lot.isComboListing ? `<span class="price-discount">${diffSign}${lot.discount}%</span>` : ''}
-      </div>
+      ${vanishHtml}
     </div>
 
-    <div>
-      <div class="card-meta-row">
-        <span>${lot.seller.type === 'private' ? 'Частник' : 'Магазин'} ${lot.seller.rating ? '• ' + lot.seller.rating : ''}</span>
-        <span>${escapeHtml(lot.seller.location)}</span>
+    <div class="card-body">
+      <h3 class="card-title">${escapeHtml(lot.title)}</h3>
+
+      <div class="card-price-row">
+        <div class="card-price">${priceFormatted}</div>
+        ${marketFormatted ? `<div class="card-market font-mono">${marketFormatted} <span style="color: ${lot.discount <= -12 ? 'var(--success)' : 'inherit'};">(${diffSign}${lot.discount}%)</span></div>` : ''}
       </div>
 
-      <button class="btn-cta" onclick="window.app.openDetails(event, '${lot.id}')">
-        <span>Открыть в терминале</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="9 18 15 12 9 6"></polyline>
-        </svg>
-      </button>
+      <div class="card-meta">
+        <div class="card-seller">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span>${escapeHtml(lot.seller.name)}</span>
+          ${lot.seller.rating ? `<span class="rating-badge font-mono">★ ${lot.seller.rating}</span>` : ''}
+        </div>
+        <div class="card-location">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span>${escapeHtml(lot.seller.location)}</span>
+        </div>
+      </div>
+
+      ${pillsHtml ? `<div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;">${pillsHtml}</div>` : ''}
+
+      <div class="card-actions">
+        <button class="btn-cta" onclick="window.app.openAvito(event, '${lot.avitoUrl}')" style="flex: 2;">
+          <span>ОТКРЫТЬ НА АВИТО</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+        </button>
+        <button class="filter-chip" onclick="window.app.openDetails(event, '${lot.id}')" style="flex: 1; justify-content: center;" title="Подробнее">
+          Подробнее
+        </button>
+      </div>
     </div>
   `;
 
   card.addEventListener('click', (e) => {
-    // If clicked on button or vanish, skip modal
     if (e.target.closest('button') || e.target.closest('a')) return;
     openLotModal(lot);
   });
@@ -375,49 +975,8 @@ function createLotCard(lot) {
   return card;
 }
 
-// Vanish Action Implementation
-async function vanishLot(event, lotId) {
-  event.stopPropagation();
-  TelegramService.haptic('medium');
-
-  const card = document.querySelector(`.lot-card[data-id="${lotId}"]`);
-  if (card) {
-    card.classList.add('vanishing');
-  }
-
-  // Send API call in background
-  ApiService.dismissLot(lotId);
-
-  // Update in-memory state
-  const target = State.lots.find(l => String(l.id) === String(lotId));
-  if (target) target.isDismissed = true;
-
-  // After 300ms animation finish, remove from DOM & update stats
-  setTimeout(() => {
-    if (card) card.remove();
-    updateStats();
-    showToast('Объявление скрыто (Vanish)', 'info');
-
-    // If no more cards left, re-render
-    const visible = getVisibleLots();
-    if (visible.length === 0) renderView();
-  }, 300);
-}
-
-async function restoreLot(event, lotId) {
-  event.stopPropagation();
-  TelegramService.haptic('success');
-
-  await ApiService.restoreLot(lotId);
-  const target = State.lots.find(l => String(l.id) === String(lotId));
-  if (target) target.isDismissed = false;
-
-  renderView();
-  showToast('Объявление восстановлено', 'success');
-}
-
 // ==========================================================================
-// Table View
+// 11. Table View Rendering
 // ==========================================================================
 function renderTableView(lots) {
   if (!DOM.tableBody) return;
@@ -425,28 +984,28 @@ function renderTableView(lots) {
 
   lots.forEach(lot => {
     const tr = document.createElement('tr');
-    tr.style.cursor = 'pointer';
-
-    const isDeal = lot.discount <= -12 && !lot.isComboListing;
+    tr.dataset.id = lot.id;
     const diffSign = lot.discount <= 0 ? '' : '+';
-    const priceText = `${lot.price.toLocaleString('ru-RU')} ₽`;
-    const marketText = lot.marketPrice ? `${lot.marketPrice.toLocaleString('ru-RU')} ₽` : '—';
+    const isDeal = lot.discount <= -12;
+    const searchObj = State.searches.find(s => s.id === lot.searchId);
+    const cityAbbr = getCityAbbr(searchObj?.city || lot.seller?.location);
 
     tr.innerHTML = `
       <td>
-        <div style="font-weight: 600; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(lot.title)}</div>
-        <div class="caption">${lot.publishedText || 'сегодня'}</div>
+        <div style="font-weight: 500; display: flex; align-items: center; gap: 6px;">
+          <span class="city-abbr-tag" style="padding: 1px 4px; font-size: 10px;">[${cityAbbr}]</span>
+          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;">${escapeHtml(lot.title)}</span>
+        </div>
+        <div class="caption">${escapeHtml(lot.seller.location)}</div>
       </td>
-      <td style="font-weight: 700; color: ${isDeal ? 'var(--success)' : 'var(--text-primary)'}; white-space: nowrap;">
-        ${priceText}
+      <td class="font-mono" style="font-weight: 600; white-space: nowrap;">
+        ${lot.price.toLocaleString('ru-RU')} ₽
       </td>
-      <td style="color: var(--text-secondary); white-space: nowrap;">
-        ${marketText}
+      <td class="font-mono" style="color: var(--text-secondary); white-space: nowrap;">
+        ${lot.marketPrice ? `${lot.marketPrice.toLocaleString('ru-RU')} ₽` : '—'}
       </td>
-      <td>
-        <span class="deal-badge" style="padding: 2px 6px; font-size: 10px; background: ${isDeal ? 'var(--success-bg)' : 'rgba(255,255,255,0.06)'}; color: ${isDeal ? 'var(--success)' : 'var(--text-secondary)'};">
-          ${diffSign}${lot.discount}%
-        </span>
+      <td class="font-mono" style="white-space: nowrap;">
+        ${lot.discount ? `<span style="color: ${isDeal ? 'var(--success)' : 'var(--text-secondary)'}; font-weight: 600;">${diffSign}${lot.discount}%</span>` : '—'}
       </td>
       <td style="color: var(--text-secondary); max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
         ${escapeHtml(lot.seller.name)}
@@ -473,7 +1032,7 @@ function renderTableView(lots) {
 }
 
 // ==========================================================================
-// Searches Manager Section
+// 12. Searches Manager Section (Менеджер радаров)
 // ==========================================================================
 function renderSearchesManager() {
   if (!DOM.searchesList) return;
@@ -498,6 +1057,9 @@ function renderSearchesManager() {
     const isActive = s.id === State.currentSearchId;
     const lotCount = State.lots.filter(l => l.searchId === s.id && !l.isDismissed).length;
     const minPriceText = s.minPrice ? `от ${s.minPrice.toLocaleString('ru-RU')} ₽` : 'без порога цены';
+    const cityAbbr = getCityAbbr(s.city);
+    const cleanTitle = cleanQueryTitle(s.query || s.title || s.id);
+    const displayLabel = formatSearchDisplay(s);
 
     card.className = 'stat-card';
     card.style.marginBottom = '12px';
@@ -508,33 +1070,35 @@ function renderSearchesManager() {
 
     card.innerHTML = `
       <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 12px;">
-        <div>
+        <div style="flex: 1;">
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <h3 class="h3">${escapeHtml(s.query)}</h3>
+            <span class="city-abbr-tag">[${cityAbbr}]</span>
+            <h3 class="h3" style="font-size: 16px;">${escapeHtml(cleanTitle)}</h3>
             ${isActive ? '<span class="brand-badge" style="background: var(--success-bg); color: var(--success); border-color: rgba(16,185,129,0.3)">АКТИВЕН</span>' : ''}
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 11px;" class="font-mono">
             <span style="padding: 2px 8px; border-radius: 6px; background: #0E0E11; border: 1px solid var(--border-subtle);">${escapeHtml(s.city || 'Челябинск')}</span>
-            <span style="padding: 2px 8px; border-radius: 6px; background: #0E0E11; border: 1px solid var(--border-subtle);">${lotCount} лотов</span>
+            <span style="padding: 2px 8px; border-radius: 6px; background: #0E0E11; border: 1px solid var(--border-subtle); color: var(--primary);">${lotCount} лотов</span>
             <span style="padding: 2px 8px; border-radius: 6px; background: #0E0E11; border: 1px solid var(--border-subtle);">${minPriceText}</span>
           </div>
         </div>
       </div>
 
       <div style="display: flex; gap: 8px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px;">
-        <button class="btn-cta" onclick="window.app.selectSearch('${s.id}')" style="height: 36px; font-size: 12px; flex: 2; background: ${isActive ? 'var(--surface-hover)' : 'var(--primary-gradient)'};">
+        <button class="btn-cta" onclick="window.app.selectSearch('${s.id}')" style="height: 38px; font-size: 12px; flex: 2; background: ${isActive ? 'var(--surface-hover)' : 'var(--primary-gradient)'};">
           ${isActive ? 'Просмотр лотов' : 'Выбрать этот радар'}
         </button>
-        <button class="filter-chip" onclick="window.app.scanSearch('${s.id}')" style="height: 36px; flex: 1; justify-content: center;" title="Сканировать">
+        <button class="filter-chip" onclick="window.app.scanSearch('${s.id}')" style="height: 38px; flex: 1; justify-content: center;" title="Сканировать">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
             <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/>
           </svg>
           Скан
         </button>
-        <button class="filter-chip" onclick="window.app.promptDelete('${s.id}', '${escapeHtml(s.query)}')" style="height: 36px; color: var(--danger); border-color: rgba(239, 68, 68, 0.3); background: var(--danger-bg); justify-content: center;" title="Удалить радар">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button class="filter-chip" onclick="window.app.promptDelete('${s.id}', '${escapeHtml(displayLabel)}')" style="height: 38px; color: var(--danger); border-color: rgba(239, 68, 68, 0.3); background: var(--danger-bg); justify-content: center; padding: 0 14px;" title="Удалить радар">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
             <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
           </svg>
+          <span>Удалить</span>
         </button>
       </div>
     `;
@@ -544,86 +1108,17 @@ function renderSearchesManager() {
 }
 
 // ==========================================================================
-// Modals & User Actions
+// 13. Form Submissions & Event Listeners
 // ==========================================================================
-function openLotModal(lot) {
-  TelegramService.haptic('medium');
-  State.modalLot = lot;
-
-  document.getElementById('modalTitle').textContent = lot.title;
-  document.getElementById('modalPrice').textContent = `${lot.price.toLocaleString('ru-RU')} ₽`;
-  document.getElementById('modalMarketPrice').textContent = lot.marketPrice ? `Оценка рынка: ${lot.marketPrice.toLocaleString('ru-RU')} ₽` : '';
-  document.getElementById('modalDiscount').textContent = lot.discount ? `${lot.discount}%` : '';
-  document.getElementById('modalDescription').textContent = lot.description || 'Описание отсутствует.';
-  document.getElementById('modalSellerName').textContent = lot.seller.name;
-  document.getElementById('modalSellerType').textContent = lot.seller.type === 'private' ? 'Частное лицо' : 'Компания / Магазин';
-  document.getElementById('modalLocation').textContent = lot.seller.location;
-  document.getElementById('modalDate').textContent = lot.publishedText || 'сегодня';
-
-  const ratingEl = document.getElementById('modalSellerRating');
-  const ratingVal = document.getElementById('modalSellerRatingVal');
-  if (lot.seller.rating) {
-    if (ratingVal) ratingVal.textContent = lot.seller.rating;
-    ratingEl.style.display = 'inline-flex';
-  } else {
-    ratingEl.style.display = 'none';
-  }
-
-  const imgEl = document.getElementById('modalMainImg');
-  if (lot.images && lot.images.length > 0) {
-    imgEl.src = lot.images[0];
-    imgEl.style.display = 'block';
-  } else {
-    imgEl.style.display = 'none';
-  }
-
-  // Tags
-  const tagsContainer = document.getElementById('modalTags');
-  tagsContainer.innerHTML = (lot.tags || []).map(t => `<span class="filter-chip" style="height: 26px; font-size: 11px;">${escapeHtml(t)}</span>`).join('');
-
-  // CTA button
-  const ctaBtn = document.getElementById('modalAvitoCta');
-  ctaBtn.onclick = () => TelegramService.openLink(lot.avitoUrl);
-
-  DOM.modalOverlay?.classList.add('open');
-  DOM.bottomSheet?.classList.add('open');
-}
-
-function openNewSearchModal() {
-  TelegramService.haptic('medium');
-  DOM.modalOverlay?.classList.add('open');
-  DOM.newSearchModal?.classList.add('open');
-}
-
-let pendingDeleteId = null;
-function promptDelete(id, title) {
-  TelegramService.haptic('medium');
-  pendingDeleteId = id;
-  document.getElementById('deleteSearchTitle').textContent = title;
-  DOM.modalOverlay?.classList.add('open');
-  DOM.deleteModal?.classList.add('open');
-}
-
-async function handleConfirmDelete() {
-  if (!pendingDeleteId) return;
-  TelegramService.haptic('heavy');
-  const id = pendingDeleteId;
-  closeAllModals();
-
-  await ApiService.deleteSearch(id);
-  State.searches = State.searches.filter(s => s.id !== id);
-  if (State.currentSearchId === id) State.currentSearchId = 'all';
-
-  populateSearchSelector();
-  renderView();
-  showToast('Радар удален', 'info');
-}
-
 async function handleNewSearchSubmit(e) {
-  e.preventDefault();
-  const q = document.getElementById('newQueryInput').value.trim();
-  const city = document.getElementById('newCitySelect').value;
-  const minP = document.getElementById('newMinPriceInput').value.trim();
+  if (e) e.preventDefault();
+  const qEl = document.getElementById('newQueryInput');
+  const cityEl = document.getElementById('newCitySelect');
+  const minPEl = document.getElementById('newMinPriceInput');
+
+  const q = qEl ? qEl.value.trim() : '';
+  const city = cityEl ? cityEl.value : 'chelyabinsk';
+  const minP = minPEl ? minPEl.value.trim() : '';
 
   if (!q) {
     showToast('Введите название товара!', 'error');
@@ -645,65 +1140,12 @@ async function handleNewSearchSubmit(e) {
   State.currentSearchId = newSearch.id;
 
   populateSearchSelector();
+  updateDeleteCurrentButtonVisibility();
   await loadData();
   setViewMode('cards');
-  showToast(`Радар «${q}» успешно запущен!`, 'success');
+  showToast(`Радар [${getCityAbbr(city)}] ${q} успешно запущен!`, 'success');
 }
 
-function closeAllModals() {
-  TelegramService.haptic('light');
-  DOM.modalOverlay?.classList.remove('open');
-  DOM.bottomSheet?.classList.remove('open');
-  DOM.newSearchModal?.classList.remove('open');
-  DOM.deleteModal?.classList.remove('open');
-}
-
-function setViewMode(mode) {
-  TelegramService.haptic('medium');
-  State.viewMode = mode;
-
-  ['cards', 'table', 'fav', 'searches'].forEach(m => {
-    const btn = document.getElementById(`tab-${m}`);
-    if (btn) {
-      if (m === mode) btn.classList.add('active');
-      else btn.classList.remove('active');
-    }
-  });
-
-  renderView();
-}
-
-function setFilterChip(filter) {
-  TelegramService.haptic('light');
-  State.activeFilter = filter;
-
-  ['all', 'deals', 'private', 'delivery', 'nodefects', 'dismissed'].forEach(f => {
-    const chip = document.getElementById(`chip-${f}`);
-    if (chip) {
-      if (f === filter) chip.classList.add('active');
-      else chip.classList.remove('active');
-    }
-  });
-
-  renderView();
-}
-
-function toggleFav(event, lotId) {
-  event.stopPropagation();
-  TelegramService.haptic('light');
-  const strId = String(lotId);
-  const idx = State.favorites.indexOf(strId);
-  if (idx > -1) {
-    State.favorites.splice(idx, 1);
-  } else {
-    State.favorites.push(strId);
-  }
-  localStorage.setItem('avitoradar_favorites', JSON.stringify(State.favorites));
-  updateStats();
-  renderView();
-}
-
-// Toast notification helper
 function showToast(message, type = 'info') {
   if (!DOM.toastContainer) return;
 
@@ -734,40 +1176,105 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;');
 }
 
-// Export global app handlers for HTML inline attributes
-window.app = {
+function setupEventListeners() {
+  // Search selector change
+  DOM.searchSelector?.addEventListener('change', (e) => {
+    TelegramService.haptic('light');
+    State.currentSearchId = e.target.value;
+    updateDeleteCurrentButtonVisibility();
+    renderView();
+  });
+
+  // Keyword input filter
+  DOM.filterInput?.addEventListener('input', (e) => {
+    State.searchQuery = e.target.value.trim().toLowerCase();
+    if (State.searchQuery) DOM.btnClearFilter?.classList.remove('hidden');
+    else DOM.btnClearFilter?.classList.add('hidden');
+    renderView();
+  });
+
+  DOM.btnClearFilter?.addEventListener('click', () => {
+    TelegramService.haptic('light');
+    if (DOM.filterInput) DOM.filterInput.value = '';
+    State.searchQuery = '';
+    DOM.btnClearFilter?.classList.add('hidden');
+    renderView();
+  });
+
+  // Sort selector
+  DOM.sortSelector?.addEventListener('change', (e) => {
+    TelegramService.haptic('light');
+    State.sortMode = e.target.value;
+    renderView();
+  });
+
+  // Refresh button
+  DOM.btnRefresh?.addEventListener('click', async () => {
+    TelegramService.haptic('medium');
+    DOM.btnRefresh.classList.add('animate-spin');
+    await loadData();
+    DOM.btnRefresh.classList.remove('animate-spin');
+    showToast('Данные синхронизированы', 'success');
+  });
+
+  // Modal Backdrop Close
+  DOM.modalOverlay?.addEventListener('click', closeAllModals);
+
+  // Forms & buttons
+  document.getElementById('formNewSearch')?.addEventListener('submit', handleNewSearchSubmit);
+  document.getElementById('btnConfirmDelete')?.addEventListener('click', handleConfirmDelete);
+
+  // Segmented tab listeners (fallback for touch/click)
+  ['cards', 'table', 'fav', 'searches'].forEach(mode => {
+    document.getElementById(`tab-${mode}`)?.addEventListener('click', (e) => {
+      e.preventDefault();
+      setViewMode(mode);
+    });
+  });
+
+  // Filter chip listeners
+  ['all', 'deals', 'private', 'delivery', 'nodefects', 'dismissed'].forEach(chip => {
+    document.getElementById(`chip-${chip}`)?.addEventListener('click', (e) => {
+      e.preventDefault();
+      setFilterChip(chip);
+    });
+  });
+}
+
+// ==========================================================================
+// 14. Export global window.app methods immediately
+// ==========================================================================
+Object.assign(window.app, {
   setViewMode,
   setFilterChip,
   toggleFav,
   vanishLot,
   restoreLot,
   openLotModal,
+  openDetails,
+  openAvito,
   openNewSearchModal,
   closeAllModals,
   promptDelete,
-  selectSearch: (id) => {
-    State.currentSearchId = id;
-    if (DOM.searchSelector) DOM.searchSelector.value = id;
-    setViewMode('cards');
-  },
-  scanSearch: async (id) => {
-    TelegramService.haptic('medium');
-    showToast('Сканирование Авито...', 'info');
-    await ApiService.triggerScan(id);
-    await loadData();
-    showToast('Каталог обновлен!', 'success');
-  },
-  openDetails: (event, lotId) => {
-    event.stopPropagation();
-    const lot = State.lots.find(l => String(l.id) === String(lotId));
-    if (lot) openLotModal(lot);
-  },
-  openAvito: (event, url) => {
-    event.stopPropagation();
-    TelegramService.openLink(url);
-  },
-  setQueryPreset: (q, minP) => {
-    document.getElementById('newQueryInput').value = q;
-    if (minP) document.getElementById('newMinPriceInput').value = minP;
-  }
-};
+  promptDeleteCurrent,
+  confirmDelete: handleConfirmDelete,
+  selectSearch,
+  scanSearch,
+  setQueryPreset
+});
+
+// ==========================================================================
+// 15. Bootstrap
+// ==========================================================================
+async function startApp() {
+  initDOM();
+  TelegramService.init();
+  setupEventListeners();
+  await loadData();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startApp);
+} else {
+  startApp();
+}

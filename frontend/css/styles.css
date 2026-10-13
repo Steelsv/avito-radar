@@ -814,3 +814,44 @@ h3, .h3 {
 .toast.toast-success { border-color: rgba(16, 185, 129, 0.4); }
 .toast.toast-error { border-color: rgba(239, 68, 68, 0.4); }
 .toast.toast-info { border-color: rgba(99, 102, 241, 0.4); }
+
+/* ==========================================================================
+   Search Management & City Badges
+   ========================================================================== */
+.city-abbr-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #A5B4FC;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.btn-delete-search {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #EF4444;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 180ms ease;
+  flex-shrink: 0;
+}
+
+.btn-delete-search:hover, .btn-delete-search:active {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #EF4444;
+  transform: scale(0.96);
+}
+
