@@ -120,6 +120,21 @@ class AvitoTelegramBot:
         self.monitoring_active = True
         self.primed_searches: set[str] = set()
         self.settings: AppSettings = load_settings()
+        self.setup_menu_button()
+
+    def setup_menu_button(self) -> None:
+        """Configure Telegram bottom-left Menu Button to open Mini App on iOS & Android."""
+        miniapp_url = os.environ.get("MINI_APP_URL", "https://steelsv.github.io/avito-radar/")
+        try:
+            self.call_api("setChatMenuButton", {
+                "menu_button": {
+                    "type": "web_app",
+                    "text": "⚡ Радар",
+                    "web_app": {"url": miniapp_url},
+                }
+            })
+        except Exception as exc:
+            logger.debug("Could not set chat menu button: %s", exc)
 
     def get_session(self, chat_id: int) -> UserSession:
         return self.sessions.setdefault(chat_id, UserSession())
@@ -231,8 +246,12 @@ class AvitoTelegramBot:
 
     def main_menu_keyboard(self) -> dict[str, Any]:
         watch_btn = "🟢 Мониторинг: ВКЛ" if self.monitoring_active else "🔴 Мониторинг: ВЫКЛ"
+        miniapp_url = os.environ.get("MINI_APP_URL", "https://steelsv.github.io/avito-radar/")
         return {
             "inline_keyboard": [
+                [
+                    {"text": "📱 Открыть радар (Mini App)", "web_app": {"url": miniapp_url}},
+                ],
                 [
                     {"text": "➕ Добавить поиск", "callback_data": "menu_add"},
                     {"text": "📋 Мои поиски", "callback_data": "menu_list"},
@@ -804,22 +823,106 @@ class AvitoTelegramBot:
                 time.sleep(2)
 
 
+def generate_api_bundle() -> dict[str, Any]:
+    """Compile cached search listings and market analysis for Mini App."""
+    bundle: dict[str, Any] = {}
+    for s in list_searches():
+        raws = load_listings(s)
+        items = [parse_catalog_item(r) for r in raws.values()]
+        for it in items:
+            classify_item(it, category_type=s.category_type, search_query=s.title)
+        annotate_market_prices(items)
+
+        bundle[s.name] = {
+            "name": s.name,
+            "title": s.title,
+            "city": s.city,
+            "min_price": s.min_price,
+            "category_type": s.category_type,
+            "items": [
+                {
+                    "id": it.id,
+                    "title": it.title,
+                    "price": it.price,
+                    "price_formatted": it.price_formatted,
+                    "market_price": it.market_price,
+                    "market_diff_percent": it.market_diff_percent,
+                    "real_price_in_desc": it.real_price_in_desc,
+                    "is_combo_listing": it.is_combo_listing,
+                    "url": it.url,
+                    "address": it.address,
+                    "metro": it.metro,
+                    "city": it.city,
+                    "published_text": it.published_text,
+                    "seller_name": it.seller_name,
+                    "seller_type": it.seller_type,
+                    "seller_rating": it.seller_rating,
+                    "closed_listings": it.closed_listings,
+                    "images": it.images[:4],
+                    "description": it.description[:600],
+                    "tags": it.tags,
+                    "badges": list(it.badges),
+                }
+                for it in items
+            ],
+        }
+    return bundle
+
+
 def start_healthcheck_server() -> None:
     port = int(os.environ.get("PORT", "7860"))
 
-    class HealthHandler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
+    class MiniAppServerHandler(http.server.BaseHTTPRequestHandler):
+        def do_OPTIONS(self) -> None:
             self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "*")
             self.end_headers()
-            self.wfile.write(b'{"status":"running","bot":"Avito Radar"}\n')
+
+        def do_GET(self) -> None:
+            path = self.path.split("?")[0]
+            if path in ("/", "/index.html"):
+                html_path = Path("web/index.html") if Path("web/index.html").exists() else Path("index.html")
+                if html_path.exists():
+                    data = html_path.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+
+            if path == "/api/bundle":
+                try:
+                    bundle_data = generate_api_bundle()
+                    payload = json.dumps(bundle_data, ensure_ascii=False).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
+                except Exception as exc:
+                    logger.warning("Error generating api bundle: %s", exc)
+
+            if path in ("/api/health", "/healthz"):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(b'{"status":"running","bot":"Avito Radar"}\n')
+                return
+
+            self.send_response(404)
+            self.end_headers()
 
         def log_message(self, format: str, *args: Any) -> None:
             pass  # Suppress noisy HTTP healthcheck logs
 
     try:
-        server = http.server.ThreadingHTTPServer(("0.0.0.0", port), HealthHandler)
-        logger.info("Healthcheck HTTP server listening on port %d", port)
+        server = http.server.ThreadingHTTPServer(("0.0.0.0", port), MiniAppServerHandler)
+        logger.info("MiniApp & Healthcheck HTTP server listening on port %d", port)
         server.serve_forever()
     except Exception as exc:
         logger.warning("Could not start healthcheck server on port %d: %s", port, exc)
