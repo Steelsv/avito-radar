@@ -461,6 +461,34 @@ h3, .h3 {
   gap: 4px;
 }
 
+.badge-subtle {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.badge-private {
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.badge-warning {
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.badge-acc {
+  border-color: rgba(197, 160, 89, 0.4) !important;
+  color: var(--accent-brass) !important;
+  background: rgba(197, 160, 89, 0.12) !important;
+  font-weight: 600;
+}
+
 /* Vanish Button (Скрыть лот) */
 .btn-vanish {
   width: 32px;

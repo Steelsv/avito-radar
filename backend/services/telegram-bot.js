@@ -185,6 +185,7 @@ function initTelegramBot() {
 }
 
 async function sendDealAlert(chatId, lot) {
+  if (!lot || lot.isAccessory) return false;
   const token = getBotToken();
   if (!token) return false;
 

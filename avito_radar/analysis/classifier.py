@@ -53,6 +53,123 @@ PARTS_AND_ACCESSORIES_RE = re.compile(
     re.I,
 )
 
+# Detailed bicycle accessories, parts and gear (gravel, mtb, road bikes)
+BIKE_PARTS_AND_ACCESSORIES_RE = re.compile(
+    r"\b(?:"
+    r"покрышк\w*|покрышка|покрышки|велопокрышк\w*|шины\s+для\s+вело\w*|"
+    r"велокамер\w*|бескамерк\w*|герметик\s+для\s+шин|"
+    r"сидушк\w*|сидень\w*\s+для|седл\w*|седло|подседел\w*|подседельный\s+(?:штырь|хомут|зажим)|"
+    r"педал\w*|педали|контактн\w*\s+педал\w*|топталк\w*|"
+    r"дропбар\w*|вынос\s+руля|вынос\w*|грипс\w*|обмотк\w*\s+руля|манетк\w*|шифтер\w*|рулев\w*\s+колонк\w*|"
+    r"велоцепь\w*|цепь\s+для\s+вело\w*|кассет\w*\s+(?:shimano|sram|для)|трещотк\w*|"
+    r"ротор\w*\s+(?:тормозной|shimano|sram|160|180)|калипер\w*|тормозн\w*\s+колодк\w*|"
+    r"байкпакинг\w*|велосумк\w*|подседельн\w*\s+сумк\w*|сумк\w*\s+(?:на\s+раму|на\s+руль|под\s+раму)|"
+    r"багажник\s+(?:для\s+вело|на\s+вело|велосипедн)|велокрыл\w*|крылья\s+(?:для\s+вело|на\s+вело)|"
+    r"флягодержател\w*|велокомпьютер\w*|велофара\w*|велофонар\w*|велошлем\w*|велотуфл\w*|велоформ\w*|"
+    r"джерси\s+(?:вело|для)|велоперчатк\w*|велозамок\w*|велонасос\w*|насос\s+(?:высокого\s+давления|для\s+вело)|"
+    r"велостанок\w*|подножк\w*\s+для\s+вело|фреймсет\w*|веловилк\w*"
+    r")\b",
+    re.I,
+)
+
+# Detailed electronics, gadgets, and PC accessories
+ELECTRONICS_ACCESSORIES_RE = re.compile(
+    r"\b(?:"
+    r"чехол\w*|чехлы|чехольчик\w*|бампер\s+(?:на|для)|"
+    r"стекл\w*\s+(?:на|для|защитн\w*)|защитн\w*\s+стекл\w*|пленк\w*\s+(?:на|для|защитн\w*)|гидрогелев\w*|"
+    r"ремешок\w*|браслет\s+(?:для|на)|стилус\w*|s-pen|spen|apple\s+pencil|наконечник\w*|амбушюр\w*|"
+    r"кейс\s+(?:для|от)|коробк\w*\s+от|коробка\s+(?:от|для)|док-станци\w*|подставк\w*\s+(?:для|под)|"
+    r"держатель\s+(?:для|в\s+авто)|magsafe\s+(?:кошелек|держатель|зарядка)|"
+    r"зарядк\w*|зарядн\w*\s+устройств\w*|блок\w*\s+питания|сетев\w*\s+адаптер|кабел\w*|провод\w*|шнур\w*|"
+    r"переходник\w*|кулер\w*|вентилятор\w*|радиатор\w*|термопаст\w*|термопрокладк\w*|райзер\w*|"
+    r"бэкплейт\w*|кронштейн\w*|болтик\w*|винтик\w*|винты|шлейф\w*|заглушк\w*|кейкап\w*|свитч\w*|коврик\s+для\s+мыши"
+    r")\b",
+    re.I,
+)
+
+# Detailed auto and motorcycle accessories
+AUTO_ACCESSORIES_RE = re.compile(
+    r"\b(?:"
+    r"коврик\w*|автоковрик\w*|авточехл\w*|накидк\w*\s+на\s+сидень\w*|брызговик\w*|дворник\w*|"
+    r"щетк\w*\s+стеклоочистител\w*|дефлектор\w*|ветровик\w*|колпак\w*\s+на\s+колес\w*|колпачки\s+на\s+ниппел\w*|"
+    r"подлокотник\w*|видеорегистратор\w*|радар-детектор\w*|ароматизатор\w*|пахучк\w*|шильдик\w*|спойлер\w*|"
+    r"оплетк\w*\s+на\s+руль|органайзер\s+в\s+багажник|фаркоп\w*|автобокс\w*"
+    r")\b",
+    re.I,
+)
+
+# Generic accessories and spare parts keywords
+GENERAL_ACCESSORIES_RE = re.compile(
+    r"\b(?:"
+    r"аксессуар\w*|запчаст\w*|комплектующ\w*|детал\w*|расходник\w*|креплени\w*|крепеж\w*|ремкомплект\w*|насадк\w*|сменн\w*"
+    r")\b",
+    re.I,
+)
+
+PREFIX_FOR_RE = re.compile(
+    r"^(?:для|на|к|под)\s+",
+    re.I,
+)
+
+
+def is_item_accessory(item: ParsedItem, search_query: str = "") -> tuple[bool, str]:
+    """Detect if the listing is an accessory, spare part, tire, saddle, case, etc.
+    Returns (is_accessory, reason_label).
+    """
+    title_low = item.title.lower()
+    query_low = search_query.lower() if search_query else ""
+
+    # Helper: If user's search query itself specifies this accessory, don't filter it out
+    def query_mentions(stem: str) -> bool:
+        if not query_low or len(stem) < 3:
+            return False
+        return stem.lower() in query_low
+
+    # 1. Bike parts & accessories
+    m_bike = BIKE_PARTS_AND_ACCESSORIES_RE.search(title_low)
+    if m_bike:
+        matched = m_bike.group(0)
+        if not query_mentions(matched[:4]):
+            return True, "Велозапчасть / Аксессуар"
+
+    # Standalone bike handlebar (руль) when query is bike-related
+    if re.search(r"\bруль\b", title_low, re.I) and not re.search(r"\bруль\b", query_low, re.I):
+        if re.search(r"гравел|велосипед|шоссе|mtb|баран|дропбар", title_low + " " + query_low, re.I):
+            return True, "Велозапчасть / Аксессуар"
+
+    # Standalone bike tube/tire (камера)
+    if re.search(r"\bкамер[аыеу]\b", title_low, re.I) and not re.search(r"\bкамер", query_low, re.I):
+        if re.search(r"вело|700|28|29|26|27\.5|schwalbe|continental|maxxis|gravel|гравел", title_low, re.I):
+            return True, "Велозапчасть / Аксессуар"
+
+    # 2. Electronics accessories
+    m_elec = ELECTRONICS_ACCESSORIES_RE.search(title_low)
+    if m_elec:
+        matched = m_elec.group(0)
+        if not query_mentions(matched[:4]):
+            return True, "Аксессуар / Расходник"
+
+    # 3. Auto / Moto accessories
+    m_auto = AUTO_ACCESSORIES_RE.search(title_low)
+    if m_auto:
+        matched = m_auto.group(0)
+        if not query_mentions(matched[:4]):
+            return True, "Автоаксессуар / Расходник"
+
+    # 4. General accessories & parts
+    m_gen = GENERAL_ACCESSORIES_RE.search(title_low)
+    if m_gen:
+        matched = m_gen.group(0)
+        if not query_mentions(matched[:4]):
+            return True, "Запчасти / Комплектующие"
+
+    # 5. Starts with "Для..." or "На..." (e.g. "Для гравела...", "На iPhone...", "Для Lada...")
+    if PREFIX_FOR_RE.match(title_low) and not PREFIX_FOR_RE.match(query_low):
+        return True, "Аксессуар / Комплектующее"
+
+    return False, ""
+
+
 # Multi-item listing / price list patterns
 COMBO_KEYWORDS_RE = re.compile(
     r"\b(?:цена\s+от|цены\s+от|стоимость\s+от|цены?\s+в\s+описании|прайс|список\s+(?:в\s+описании|ниже)|"
@@ -150,10 +267,15 @@ def classify_item(item: ParsedItem, category_type: str = "goods", search_query: 
         else:
             item.tags.append("👤 Частный продавец")
 
+        is_acc, acc_label = is_item_accessory(item, search_query)
+        if is_acc:
+            item.is_accessory = True
+            item.tags.append(f"🛡️ {acc_label}")
+
         if DEFECT_RE.search(full_text):
             item.tags.append("⚠️ Дефект / На запчасти")
 
-        if PARTS_AND_ACCESSORIES_RE.search(item.title.lower()):
+        if PARTS_AND_ACCESSORIES_RE.search(item.title.lower()) and not is_acc:
             item.tags.append("🔧 Запчасти / Комплектующие")
 
         if PC_BUILD_RE.search(item.title.lower()):
@@ -198,7 +320,9 @@ def classify_item(item: ParsedItem, category_type: str = "goods", search_query: 
 
 
 def is_likely_fake_or_junk(item: ParsedItem, min_price: int | None = None) -> bool:
-    """Check if item is junk, parts, or clickbait price."""
+    """Check if item is junk, parts, accessories, or clickbait price."""
+    if getattr(item, "is_accessory", False):
+        return True
     if min_price and item.price and item.price < min_price:
         return True
     if item.price and item.price < 500:
@@ -212,6 +336,9 @@ def is_likely_fake_or_junk(item: ParsedItem, min_price: int | None = None) -> bo
             "Подозрительная цена",
             "Сборное объявление",
             "Реальная цена в описании",
+            "Аксессуар",
+            "Велозапчасть",
+            "Автоаксессуар",
         )):
             return True
     return False

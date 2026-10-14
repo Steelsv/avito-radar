@@ -54,6 +54,7 @@ class ParsedItem:
     market_diff_percent: float | None = None
     real_price_in_desc: int | None = None
     is_combo_listing: bool = False
+    is_accessory: bool = False
     tags: list[str] = field(default_factory=list)
 
 

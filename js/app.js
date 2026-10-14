@@ -529,20 +529,69 @@ const State = {
   searches: [],
   currentSearchId: 'all',
   lots: [],
-  activeFilter: 'all', // 'all', 'deals', 'private', 'delivery', 'nodefects', 'dismissed'
+  activeFilter: 'all', // 'all', 'noaccessories', 'deals', 'private', 'delivery', 'nodefects', 'dismissed'
   searchQuery: '',
   sortMode: 'deal', // 'deal', 'cheap', 'expensive', 'date'
   viewMode: 'cards', // 'cards', 'table', 'fav', 'searches'
+  excludeAccessories: true,
   favorites: [],
   modalLot: null,
   pendingDeleteId: null
 };
 
-// Load saved favorites safely
+// Load saved favorites and accessories preference safely
 try {
   const savedFavs = SafeStorage.getItem(getUserStorageKey('favorites'));
   if (savedFavs) State.favorites = JSON.parse(savedFavs);
+  const savedAcc = SafeStorage.getItem(getUserStorageKey('exclude_accessories'));
+  if (savedAcc !== null) State.excludeAccessories = savedAcc === 'true';
 } catch (_) {}
+
+// ==========================================================================
+// 5.1 Accessory & Parts Intelligent Classifier (Prevents median breakage)
+// ==========================================================================
+const BIKE_ACC_RE = /\b(?:покрышк\w*|покрышка|покрышки|велопокрышк\w*|шины\s+для\s+вело\w*|велокамер\w*|бескамерк\w*|герметик\s+для\s+шин|сидушк\w*|сидень\w*\s+для|седл\w*|седло|подседел\w*|подседельный|педал\w*|педали|контактн\w*\s+педал\w*|топталк\w*|дропбар\w*|вынос\s+руля|вынос\w*|грипс\w*|обмотк\w*\s+руля|манетк\w*|шифтер\w*|рулев\w*\s+колонк\w*|велоцепь\w*|цепь\s+для\s+вело\w*|кассет\w*\s+(?:shimano|sram|для)|трещотк\w*|ротор\w*\s+(?:тормозной|shimano|sram|160|180)|калипер\w*|тормозн\w*\s+колодк\w*|байкпакинг\w*|велосумк\w*|подседельн\w*\s+сумк\w*|сумк\w*\s+(?:на\s+раму|на\s+руль|под\s+раму)|багажник\s+(?:для\s+вело|на\s+вело|велосипедн)|велокрыл\w*|крылья\s+(?:для\s+вело|на\s+вело)|флягодержател\w*|велокомпьютер\w*|велофара\w*|велофонар\w*|велошлем\w*|велотуфл\w*|велоформ\w*|джерси\s+(?:вело|для)|велоперчатк\w*|велозамок\w*|велонасос\w*|насос\s+(?:высокого\s+давления|для\s+вело)|велостанок\w*|подножк\w*\s+для\s+вело|фреймсет\w*|веловилк\w*)\b/i;
+
+const ELEC_ACC_RE = /\b(?:чехол\w*|чехлы|чехольчик\w*|бампер\s+(?:на|для)|стекл\w*\s+(?:на|для|защитн\w*)|защитн\w*\s+стекл\w*|пленк\w*\s+(?:на|для|защитн\w*)|гидрогелев\w*|ремешок\w*|браслет\s+(?:для|на)|стилус\w*|s-pen|spen|apple\s+pencil|наконечник\w*|амбушюр\w*|кейс\s+(?:для|от)|коробк\w*\s+от|коробка\s+(?:от|для)|док-станци\w*|подставк\w*\s+(?:для|под)|держатель\s+(?:для|в\s+авто)|magsafe|зарядк\w*|зарядн\w*\s+устройств\w*|блок\w*\s+питания|сетев\w*\s+адаптер|кабел\w*|провод\w*|шнур\w*|переходник\w*|кулер\w*|вентилятор\w*|радиатор\w*|термопаст\w*|термопрокладк\w*|райзер\w*|бэкплейт\w*|кронштейн\w*|болтик\w*|винтик\w*|винты|шлейф\w*|заглушк\w*|кейкап\w*|свитч\w*|коврик\s+для\s+мыши)\b/i;
+
+const AUTO_ACC_RE = /\b(?:коврик\w*|автоковрик\w*|авточехл\w*|накидк\w*\s+на\s+сидень\w*|брызговик\w*|дворник\w*|щетк\w*\s+стеклоочистител\w*|дефлектор\w*|ветровик\w*|колпак\w*\s+на\s+колес\w*|подлокотник\w*|видеорегистратор\w*|радар-детектор\w*|ароматизатор\w*|пахучк\w*|шильдик\w*|спойлер\w*|оплетк\w*\s+на\s+руль|органайзер\s+в\s+багажник|фаркоп\w*|автобокс\w*)\b/i;
+
+const GEN_ACC_RE = /\b(?:аксессуар\w*|запчаст\w*|комплектующ\w*|детал\w*|расходник\w*|креплени\w*|крепеж\w*|ремкомплект\w*|насадк\w*|сменн\w*)\b/i;
+
+function isAccessoryLot(lot, searchQuery = '') {
+  if (!lot) return false;
+  if (lot.isAccessory) return true;
+  if (Array.isArray(lot.tags) && lot.tags.some(t => t.includes('Аксессуар') || t.includes('Велозапчасть') || t.includes('Автоаксессуар'))) {
+    return true;
+  }
+  const t = (lot.title || '').toLowerCase();
+  const q = (searchQuery || '').toLowerCase();
+  const queryMentions = (term) => q && term && term.length >= 3 && q.includes(term.toLowerCase());
+
+  const mBike = BIKE_ACC_RE.exec(t);
+  if (mBike && !queryMentions(mBike[0].substring(0, 4))) return true;
+
+  if (/\bруль\b/i.test(t) && !/\bруль\b/i.test(q)) {
+    if (/гравел|велосипед|шоссе|mtb|баран|дропбар/i.test(t + ' ' + q)) return true;
+  }
+
+  if (/\bкамер[аыеу]\b/i.test(t) && !/\bкамер/i.test(q)) {
+    if (/вело|700|28|29|26|27\.5|schwalbe|continental|maxxis|gravel|гравел/i.test(t)) return true;
+  }
+
+  const mElec = ELEC_ACC_RE.exec(t);
+  if (mElec && !queryMentions(mElec[0].substring(0, 4))) return true;
+
+  const mAuto = AUTO_ACC_RE.exec(t);
+  if (mAuto && !queryMentions(mAuto[0].substring(0, 4))) return true;
+
+  const mGen = GEN_ACC_RE.exec(t);
+  if (mGen && !queryMentions(mGen[0].substring(0, 4))) return true;
+
+  if (/^(?:для|на|к|под)\s+/i.test(t) && !/^(?:для|на|к|под)\s+/i.test(q)) return true;
+
+  return false;
+}
 
 // ==========================================================================
 // 6. DOM Elements Cache
@@ -682,7 +731,7 @@ function setFilterChip(filter) {
   State.activeFilter = filter;
   if (!DOM.lotsContainer) initDOM();
 
-  ['all', 'deals', 'private', 'delivery', 'nodefects', 'dismissed'].forEach(f => {
+  ['all', 'noaccessories', 'deals', 'private', 'delivery', 'nodefects', 'dismissed'].forEach(f => {
     const chip = document.getElementById(`chip-${f}`);
     if (chip) {
       if (f === filter) chip.classList.add('active');
@@ -690,6 +739,16 @@ function setFilterChip(filter) {
     }
   });
 
+  renderView();
+}
+
+function toggleExcludeAccessories() {
+  TelegramService.haptic('selection');
+  State.excludeAccessories = !State.excludeAccessories;
+  SafeStorage.setItem(getUserStorageKey('exclude_accessories'), String(State.excludeAccessories));
+  const statusText = State.excludeAccessories ? 'Аксессуары и запчасти скрыты' : 'Показываются все объявления (с аксессуарами)';
+  showToast(statusText, 'info');
+  updateStats();
   renderView();
 }
 
@@ -1053,6 +1112,9 @@ function getVisibleLots() {
     lots = lots.filter(l => l.searchId === State.currentSearchId);
   }
 
+  const currentSearch = State.searches.find(s => s.id === State.currentSearchId);
+  const searchQ = currentSearch?.query || '';
+
   // Dismissed filter
   if (State.activeFilter === 'dismissed') {
     lots = lots.filter(l => l.isDismissed);
@@ -1065,9 +1127,18 @@ function getVisibleLots() {
     lots = lots.filter(l => State.favorites.includes(String(l.id)));
   }
 
+  // Accessory exclusion: active when 'noaccessories' chip is selected,
+  // or when global excludeAccessories is on (unless user specifically chose 'all' to see all items)
+  const shouldFilterAcc = State.activeFilter === 'noaccessories' ||
+    (State.excludeAccessories && State.activeFilter !== 'all' && State.activeFilter !== 'dismissed');
+
+  if (shouldFilterAcc || State.activeFilter === 'noaccessories') {
+    lots = lots.filter(l => !isAccessoryLot(l, searchQ));
+  }
+
   // Chip filters
   if (State.activeFilter === 'deals') {
-    lots = lots.filter(l => l.discount <= -12 && !l.isComboListing);
+    lots = lots.filter(l => l.discount <= -12 && !l.isComboListing && !isAccessoryLot(l, searchQ));
   } else if (State.activeFilter === 'private') {
     lots = lots.filter(l => l.seller.type === 'private');
   } else if (State.activeFilter === 'delivery') {
@@ -1183,20 +1254,45 @@ function updateStats() {
     ? activeLots
     : activeLots.filter(l => l.searchId === State.currentSearchId);
 
-  // Market Median
-  const medianPrice = currentScoped.find(l => l.marketPrice)?.marketPrice || 0;
+  const currentSearch = State.searches.find(s => s.id === State.currentSearchId);
+  const searchQ = currentSearch?.query || '';
+
+  // Calculate clean market median strictly excluding accessories, defects and combo bait listings
+  const nonAccessoryLots = currentScoped.filter(l => !isAccessoryLot(l, searchQ) && !l.isComboListing);
+  const targetLots = nonAccessoryLots.length >= 2 ? nonAccessoryLots : currentScoped;
+
+  let medianPrice = 0;
+  const validPrices = targetLots.map(l => l.price).filter(p => typeof p === 'number' && p > 0);
+  if (validPrices.length > 0) {
+    const sorted = [...validPrices].sort((a, b) => a - b);
+    let slice = sorted;
+    if (sorted.length >= 4) {
+      const upperHalf = sorted.slice(Math.floor(sorted.length / 2));
+      const upperMed = upperHalf[Math.floor(upperHalf.length / 2)];
+      if (upperMed >= 15000) {
+        const cutoff = Math.max(1000, Math.floor(upperMed * 0.25));
+        const trimmed = sorted.filter(p => p >= cutoff);
+        if (trimmed.length >= 2) slice = trimmed;
+      }
+    }
+    const mid = Math.floor(slice.length / 2);
+    medianPrice = slice.length % 2 === 0 ? Math.round((slice[mid - 1] + slice[mid]) / 2) : slice[mid];
+  } else {
+    medianPrice = targetLots.find(l => l.marketPrice)?.marketPrice || 0;
+  }
+
   if (DOM.statMedianPrice) {
     DOM.statMedianPrice.textContent = medianPrice > 0 ? `${medianPrice.toLocaleString('ru-RU')} ₽` : '—';
   }
 
-  // Deals Count
-  const dealsCount = currentScoped.filter(l => l.discount <= -12 && !l.isComboListing).length;
+  // Deals Count (excluding accessories from being counted as product deals)
+  const dealsCount = targetLots.filter(l => l.discount <= -12 && !l.isComboListing && !isAccessoryLot(l, searchQ)).length;
   if (DOM.statDealsCount) {
     DOM.statDealsCount.textContent = dealsCount;
   }
 
   // Top Discount
-  const topDeal = currentScoped.find(l => l.discount < 0 && !l.isComboListing);
+  const topDeal = targetLots.find(l => l.discount < 0 && !l.isComboListing && !isAccessoryLot(l, searchQ));
   if (DOM.statTopDiscount) {
     DOM.statTopDiscount.textContent = topDeal ? `${topDeal.discount}%` : '0%';
   }
@@ -1509,10 +1605,17 @@ function createLotCard(lot) {
   `;
 
   // Secondary badges
-  const pillsHtml = (lot.tags || []).slice(0, 2).map(tag => {
+  const isAcc = isAccessoryLot(lot, searchObj?.query || '');
+  let tagsList = [...(lot.tags || [])];
+  if (isAcc && !tagsList.some(t => t.includes('Аксессуар') || t.includes('Велозапчасть') || t.includes('Автоаксессуар'))) {
+    tagsList.unshift('🛡️ Аксессуар');
+  }
+
+  const pillsHtml = tagsList.slice(0, 2).map(tag => {
     let cls = 'badge-subtle';
     if (tag.includes('Частный')) cls += ' badge-private';
     if (tag.includes('Сборное') || tag.includes('Дефект')) cls += ' badge-warning';
+    if (tag.includes('Аксессуар') || tag.includes('Велозапчасть') || tag.includes('Автоаксессуар')) cls += ' badge-acc';
     return `<span class="${cls}">${escapeHtml(tag)}</span>`;
   }).join('');
 
@@ -1722,6 +1825,9 @@ async function handleNewSearchSubmit(e) {
     return;
   }
 
+  const excludeAccEl = document.getElementById('newExcludeAccessories');
+  const excludeAcc = excludeAccEl ? excludeAccEl.checked : true;
+
   TelegramService.haptic('success');
   closeAllModals();
 
@@ -1732,7 +1838,7 @@ async function handleNewSearchSubmit(e) {
       query: q,
       city: city,
       minPrice: minP ? Number(minP) : 0,
-      filters: { noDefects: true }
+      filters: { noDefects: true, excludeAccessories: excludeAcc }
     });
 
     State.searches = State.searches.filter(s => s.id !== newSearch.id);
@@ -1926,6 +2032,7 @@ Object.assign(window.app, {
   resetMinPrice,
   setQueryPreset,
   quickAddPreset,
+  toggleExcludeAccessories,
   applyQueryFilter
 });
 

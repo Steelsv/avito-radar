@@ -64,18 +64,18 @@ async function scanSearch(search) {
             }
           }
 
-          // Annotate with market prices
+          // Annotate with market prices (context-aware of search query)
           try {
-            annotateLotsWithMarket(freshLots);
+            annotateLotsWithMarket(freshLots, search.query || '');
             LotModel.saveToDisk();
           } catch (marketErr) {
             console.warn(`[AvitoScraper] Market price annotation notice:`, marketErr.message);
           }
 
-          // Check for top deals to alert
+          // Check for top deals to alert (excluding accessories)
           for (const lot of freshLots) {
             try {
-              if (lot.discount <= -15 && !lot.isComboListing && !lot.isDismissed && !lot.notifiedAt) {
+              if (lot.discount <= -15 && !lot.isComboListing && !lot.isAccessory && !lot.isDismissed && !lot.notifiedAt) {
                 sendDealAlert(null, lot);
                 lot.notifiedAt = Date.now();
               }

@@ -18,6 +18,7 @@ class AppSettings:
     fresh_hours_threshold: float = 3.0   # Ads published within N hours are considered fresh
     alert_private_only: bool = True      # Send alerts only for private individuals
     alert_filter_junk: bool = True       # Filter out junk, parts and clickbait prices
+    alert_filter_accessories: bool = True # Filter out accessories & components from alert spam
     alert_no_republished: bool = True    # Filter out republished old ads
     impersonate_profile: str = "firefox147"
 

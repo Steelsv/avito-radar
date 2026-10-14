@@ -230,7 +230,12 @@ def watch_searches(
 
                             # Fresh item detected!
                             parsed = parse_catalog_item(raw)
-                            classify_item(parsed, category_type=s.category_type)
+                            q_str = s.title or s.params.get("q", "")
+                            classify_item(parsed, category_type=s.category_type, search_query=q_str)
+
+                            # Filter accessories if configured
+                            if getattr(s, "exclude_accessories", True) and getattr(parsed, "is_accessory", False):
+                                continue
 
                             # Filter private only
                             if s.private_only and any("Агентство" in t or "Магазин" in t for t in parsed.tags):

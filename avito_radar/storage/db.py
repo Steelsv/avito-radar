@@ -31,6 +31,7 @@ class SearchRecord:
     new_only: bool = True
     min_price: int | None = None
     max_price: int | None = None
+    exclude_accessories: bool = True
     created_at: str = ""
     user_id: str = ""
 

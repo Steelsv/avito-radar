@@ -139,6 +139,9 @@
       <button id="chip-all" class="filter-chip active" onclick="window.app.setFilterChip('all')">
         Все
       </button>
+      <button id="chip-noaccessories" class="filter-chip" onclick="window.app.setFilterChip('noaccessories')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/></svg> Без аксессуаров
+      </button>
       <button id="chip-deals" class="filter-chip" onclick="window.app.setFilterChip('deals')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 12-7 7-7-7M19 5l-7 7-7-7"/></svg> Только выгода
       </button>
@@ -331,6 +334,7 @@
             <div id="querySuggestionsDropdown" class="suggestions-dropdown hidden"></div>
           </div>
           <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
+            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('гравел', 25000)">🚲 Гравел</button>
             <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('Lada Vesta', 600000)">Lada Vesta</button>
             <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('BMW 320d', 1800000)">BMW 320d</button>
             <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('Toyota Camry', 1800000)">Camry</button>
@@ -356,6 +360,16 @@
         <div class="form-group">
           <label class="form-label">Мин. цена отсечения (₽) — Защита от байт-цен (100 ₽)</label>
           <input type="number" id="newMinPriceInput" placeholder="0 (автоматически)" class="form-input font-mono">
+        </div>
+
+        <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--surface-card); border: 1px solid var(--border-subtle); border-radius: 12px; margin-top: 10px;">
+          <div>
+            <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+              <span>🛡️ Исключать аксессуары и запчасти</span>
+            </div>
+            <div class="caption" style="font-size: 11px; margin-top: 2px;">Скрывать покрышки, сидушки, чехлы и расходники, чтобы не ломать медиану цен</div>
+          </div>
+          <input type="checkbox" id="newExcludeAccessories" checked style="width: 20px; height: 20px; accent-color: var(--accent-brass); cursor: pointer;">
         </div>
 
         <button type="submit" class="btn-cta" style="height: 48px; font-size: 14px; margin-top: 18px;">

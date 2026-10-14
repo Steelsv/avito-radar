@@ -115,6 +115,7 @@ class LotModel {
       tags: raw.tags || [],
       badges: raw.badges || [],
       isComboListing: Boolean(raw.is_combo_listing || raw.isComboListing),
+      isAccessory: Boolean(raw.is_accessory || raw.isAccessory || (raw.tags && raw.tags.some(t => t.includes('Аксессуар') || t.includes('Велозапчасть') || t.includes('Автоаксессуар')))),
       realPriceInDesc: Number(raw.real_price_in_desc || raw.realPriceInDesc) || null
     };
   }
@@ -143,7 +144,7 @@ class LotModel {
 
     // Filter: only profit
     if (filters.onlyProfit) {
-      result = result.filter(l => l.discount <= -12 && !l.isComboListing);
+      result = result.filter(l => l.discount <= -12 && !l.isComboListing && !l.isAccessory);
     }
 
     // Filter: private sellers only
@@ -154,6 +155,11 @@ class LotModel {
     // Filter: with delivery
     if (filters.withDelivery) {
       result = result.filter(l => (l.badges || []).some(b => b.toLowerCase().includes('доставка')));
+    }
+
+    // Filter: no accessories
+    if (filters.noAccessories) {
+      result = result.filter(l => !l.isAccessory && !(l.tags || []).some(t => t.includes('Аксессуар') || t.includes('Велозапчасть') || t.includes('Автоаксессуар')));
     }
 
     // Filter: no defects

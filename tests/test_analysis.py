@@ -208,3 +208,154 @@ def test_market_median_ignores_combo_and_defects():
     # Combo bait 8000 card must NOT be tagged 'Супер-цена' or 'Выгодно'
     assert not any("Выгодно" in t or "Супер-цена" in t for t in combo_card.tags)
 
+
+def test_gravel_bike_accessories_dont_break_median():
+    """Verify that tires, saddles, pedals, handlebars and tubes do NOT ruin bike median price."""
+    from avito_radar.analysis.classifier import is_item_accessory, is_likely_fake_or_junk
+
+    def make_lot(pid: int, title: str, price: int, desc: str = ""):
+        it = ParsedItem(
+            id=pid,
+            title=title,
+            price=price,
+            price_formatted=f"{price} ₽",
+            url=f"https://www.avito.ru/{pid}",
+            address="Москва",
+            metro="",
+            city="moskva",
+            published_text="сегодня",
+            sort_timestamp=None,
+            seller_name="Продавец",
+            seller_type="частное лицо",
+            seller_rating=5.0,
+            closed_listings=5,
+            badges=(),
+            images=[],
+            description=desc,
+            phone_available=True,
+        )
+        classify_item(it, category_type="goods", search_query="гравел")
+        return it
+
+    # Mixed listings returned by Avito for 'гравел':
+    # Accessories & parts (1000 - 2500 ₽)
+    acc1 = make_lot(101, "Покрышки WTB Riddler 700x37c для гравела", 1200, "Пара покрышек в хорошем состоянии")
+    acc2 = make_lot(102, "Сидушка Selle Royal для гравийного велосипеда", 1500, "Комфортное седло")
+    acc3 = make_lot(103, "Седло Brooks B17 на гравел", 2500, "Кожаное седло")
+    acc4 = make_lot(104, "Педали контактные Shimano SPD для гравела", 1800, "Педали с шипами")
+    acc5 = make_lot(105, "Руль баран дропбар для гравела", 2200, "Алюминиевый руль с флейром")
+    acc6 = make_lot(106, "Камера велосипедная Continental 700c гравел", 500, "Новая велокамера")
+
+    # Genuine gravel bicycles (42000 - 85000 ₽)
+    bike1 = make_lot(201, "Велосипед Outleap Rudeway гравел", 42000, "Гравийный велосипед, трансмиссия Claris, дисковые тормоза")
+    bike2 = make_lot(202, "Гравийный велосипед Marin Nicasio", 55000, "Хромоль, отличное состояние")
+    bike3 = make_lot(203, "Велосипед Merida Silex 300 гравел", 68000, "Карбоновая вилка, идеальное состояние")
+    bike4 = make_lot(204, "Gravel bike Cannondale Topstone", 85000, "Топовый гравел на GRX")
+
+    # 1. Check classification
+    accessories = [acc1, acc2, acc3, acc4, acc5, acc6]
+    for acc in accessories:
+        assert acc.is_accessory is True, f"Expected {acc.title} to be classified as accessory!"
+        assert any("Велозапчасть" in t or "Аксессуар" in t for t in acc.tags), f"Missing accessory tag on {acc.title}"
+        assert is_likely_fake_or_junk(acc) is True
+
+    bikes = [bike1, bike2, bike3, bike4]
+    for b in bikes:
+        assert b.is_accessory is False, f"Expected {b.title} to be genuine bike, not accessory!"
+
+    # 2. Run market price analysis
+    all_items = accessories + bikes
+    annotate_market_prices(all_items)
+
+    # Median MUST reflect genuine bikes (~61,500 ₽), NOT 1,650 ₽!
+    for b in bikes:
+        assert b.market_price is not None
+        assert 50000 <= b.market_price <= 70000, f"Market price {b.market_price} is distorted by accessories!"
+
+    # Outleap at 42,000 ₽ is a great deal (-31.7%), and MUST NOT be labeled 'Выше рынка'
+    assert not any("Выше рынка" in t for t in bike1.tags), "Bike must not be tagged 'Выше рынка' due to accessory price collapse!"
+    assert any("Выгодно" in t for t in bike1.tags), "Bargain bike should be tagged 'Выгодно'!"
+
+    # Accessories (1,200 ₽) MUST NOT be tagged as -98% bargain deal for a bicycle
+    for acc in accessories:
+        assert not any("Выгодно" in t or "Супер-цена" in t for t in acc.tags), f"Accessory {acc.title} wrongly tagged as deal!"
+
+
+def test_context_aware_accessory_query():
+    """If user specifically searches for 'седло для велосипеда', saddles are NOT unwanted accessories."""
+    item = ParsedItem(
+        id=301,
+        title="Седло Selle Italia для велосипеда",
+        price=3500,
+        price_formatted="3 500 ₽",
+        url="https://www.avito.ru/301",
+        address="Москва",
+        metro="",
+        city="moskva",
+        published_text="сегодня",
+        sort_timestamp=None,
+        seller_name="Иван",
+        seller_type="частное лицо",
+        seller_rating=5.0,
+        closed_listings=2,
+        badges=(),
+        images=[],
+        description="Отличное седло",
+        phone_available=True,
+    )
+    classify_item(item, category_type="goods", search_query="седло для велосипеда")
+    # Because query itself contains 'седло', it's the exact searched item
+    assert item.is_accessory is False
+
+
+def test_iphone_and_car_accessories_detection():
+    """Verify phone cases/glass and car floor mats are recognized across non-bike products."""
+    case = ParsedItem(
+        id=401,
+        title="Чехол на iPhone 15 Pro Max с MagSafe",
+        price=1200,
+        price_formatted="1 200 ₽",
+        url="https://www.avito.ru/401",
+        address="Москва",
+        metro="",
+        city="moskva",
+        published_text="сегодня",
+        sort_timestamp=None,
+        seller_name="Магазин",
+        seller_type="магазин",
+        seller_rating=4.9,
+        closed_listings=200,
+        badges=(),
+        images=[],
+        description="Силиконовый чехол",
+        phone_available=True,
+    )
+    classify_item(case, category_type="goods", search_query="iPhone 15 Pro Max")
+    assert case.is_accessory is True
+    assert any("Аксессуар" in t for t in case.tags)
+
+    mats = ParsedItem(
+        id=402,
+        title="Коврики Eva в салон Lada Vesta",
+        price=2200,
+        price_formatted="2 200 ₽",
+        url="https://www.avito.ru/402",
+        address="Челябинск",
+        metro="",
+        city="chelyabinsk",
+        published_text="сегодня",
+        sort_timestamp=None,
+        seller_name="Сергей",
+        seller_type="частное лицо",
+        seller_rating=5.0,
+        closed_listings=10,
+        badges=(),
+        images=[],
+        description="Комплект ковриков",
+        phone_available=True,
+    )
+    classify_item(mats, category_type="goods", search_query="Lada Vesta")
+    assert mats.is_accessory is True
+    assert any("Автоаксессуар" in t for t in mats.tags)
+
+

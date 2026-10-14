@@ -30,7 +30,26 @@ def calculate_group_stats(prices: Sequence[int]) -> PriceStats | None:
     if len(valid_prices) < MIN_ITEMS_FOR_STATS:
         return None
 
-    # If high prices exist, ignore clickbaits / junk under 1000 ₽
+    # Sort prices to detect clusters and distributions
+    valid_prices.sort()
+
+    # If high prices exist, detect lower-tail outlier gap (accessories/cheap parts distortion)
+    # E.g., for bikes/electronics where prices are 25000-80000, 1000-2500 is an extreme lower outlier
+    if len(valid_prices) >= 4:
+        upper_half = valid_prices[len(valid_prices) // 2 :]
+        upper_median = statistics.median(upper_half)
+        if upper_median >= 15000:
+            # Cut off items below 25% of upper median (e.g. < 10000 for 40k+ bikes)
+            cutoff = max(1000, int(upper_median * 0.25))
+            trimmed_low = [p for p in valid_prices if p >= cutoff]
+            if len(trimmed_low) >= MIN_ITEMS_FOR_STATS:
+                valid_prices = trimmed_low
+        elif upper_median >= 5000:
+            cutoff = max(500, int(upper_median * 0.20))
+            trimmed_low = [p for p in valid_prices if p >= cutoff]
+            if len(trimmed_low) >= MIN_ITEMS_FOR_STATS:
+                valid_prices = trimmed_low
+
     max_p = max(valid_prices)
     if max_p >= 10000:
         valid_prices = [p for p in valid_prices if p >= 1000]
@@ -75,7 +94,7 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
             continue
 
         # Exclude junk, parts, defects, accessories, and combo bait listings
-        if is_likely_fake_or_junk(item):
+        if getattr(item, "is_accessory", False) or is_likely_fake_or_junk(item):
             continue
 
         all_prices.append(item.price)
@@ -108,8 +127,8 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
             diff = (item.price - stats.median_price) / stats.median_price * 100
             item.market_diff_percent = round(diff, 1)
 
-            # Do not tag combo / bait listings as deals
-            if not getattr(item, "is_combo_listing", False):
+            # Do not tag combo / bait or accessory listings as deals
+            if not getattr(item, "is_combo_listing", False) and not getattr(item, "is_accessory", False):
                 if diff <= -50:
                     item.tags.append(f"🔥 Супер-цена / Проверить лот ({item.market_diff_percent}%)")
                 elif diff <= -15:

@@ -150,6 +150,7 @@ class SearchModel {
         onlyProfit: Boolean(data.filters?.onlyProfit),
         privateSellers: Boolean(data.filters?.privateSellers),
         withDelivery: Boolean(data.filters?.withDelivery),
+        excludeAccessories: data.filters?.excludeAccessories !== false,
         noDefects: data.filters?.noDefects !== false
       },
       isActive: true,

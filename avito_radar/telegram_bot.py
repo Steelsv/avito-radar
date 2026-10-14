@@ -402,11 +402,17 @@ class AvitoTelegramBot:
         for idx, s in enumerate(searches, start=1):
             listings = load_listings(s)
             pmin_info = f" · от {s.min_price:,} ₽" if s.min_price else ""
+            acc_status = "ВКЛ ✅" if getattr(s, "exclude_accessories", True) else "ВЫКЛ ❌"
             text += f"<b>{idx}. {html.escape(s.title)}</b>\n"
-            text += f"   📍 {html.escape(s.city)} · В базе: {len(listings)} лотов{pmin_info}\n\n"
-            buttons.append([{"text": f"📊 Скачать Excel — {s.title}", "callback_data": f"action_scan_{s.name}"}])
-            buttons.append([{"text": f"💰 Порог цены ({s.min_price or '0'} ₽) — {s.title}", "callback_data": f"set_pmin_{s.name}"}])
-            buttons.append([{"text": f"🗑 Удалить «{s.title}»", "callback_data": f"action_del_{s.name}"}])
+            text += f"   📍 {html.escape(s.city)} · В базе: {len(listings)} лотов{pmin_info} · Без аксов: {acc_status}\n\n"
+            buttons.append([
+                {"text": f"🛡 Без аксов ({acc_status})", "callback_data": f"toggle_acc_{s.name}"},
+                {"text": f"💰 Порог ({s.min_price or '0'} ₽)", "callback_data": f"set_pmin_{s.name}"},
+            ])
+            buttons.append([
+                {"text": f"📊 Скачать Excel — {s.title}", "callback_data": f"action_scan_{s.name}"},
+                {"text": f"🗑 Удалить «{s.title}»", "callback_data": f"action_del_{s.name}"},
+            ])
 
         buttons.append([{"text": "➕ СОЗДАТЬ ЕЩЁ РАДАР", "callback_data": "menu_add"}])
         buttons.append([{"text": "🔙 В главное меню", "callback_data": "menu_main"}])
@@ -418,11 +424,13 @@ class AvitoTelegramBot:
         self.settings = load_settings()
         priv_text = "👤 Продавцы: ТОЛЬКО ЧАСТНИКИ ✅" if self.settings.alert_private_only else "👥 Продавцы: ВСЕ (с магазинами) ❌"
         junk_text = "🛡 Анти-мусор и байт-цены: ВКЛЮЧЕНО ✅" if self.settings.alert_filter_junk else "⚠️ Анти-мусор: ВЫКЛЮЧЕНО ❌"
+        acc_text = "🛡 Исключать аксессуары: ВКЛЮЧЕНО ✅" if getattr(self.settings, "alert_filter_accessories", True) else "⚠️ Исключать аксессуары: ВЫКЛЮЧЕНО ❌"
         text = (
             "⚙️ <b>НАСТРОЙКИ МОНИТОРИНГА 24/7</b>\n\n"
             f"• Проверка новинок: <b>каждые {self.settings.watch_interval:.0f} сек</b>\n"
             f"• Фильтр продавцов: <b>{'Только частники' if self.settings.alert_private_only else 'Все предложения'}</b>\n"
             f"• Фильтр фейковых цен (100 ₽): <b>{'Активен ✅' if self.settings.alert_filter_junk else 'Выключен'}</b>\n"
+            f"• Фильтр аксессуаров / запчастей: <b>{'Активен ✅' if getattr(self.settings, 'alert_filter_accessories', True) else 'Выключен'}</b>\n"
             f"• Игнорировать дубликаты: <b>{'Да' if self.settings.alert_no_republished else 'Нет'}</b>\n\n"
             "Нажмите на нужную кнопку для переключения параметра:"
         )
@@ -430,6 +438,7 @@ class AvitoTelegramBot:
             "inline_keyboard": [
                 [{"text": priv_text, "callback_data": "set_toggle_private"}],
                 [{"text": junk_text, "callback_data": "set_toggle_junk"}],
+                [{"text": acc_text, "callback_data": "set_toggle_accessories"}],
                 [{"text": "⏱ Проверка раз в 1 минуту", "callback_data": "set_interval_60"}],
                 [{"text": "⏱ Проверка раз в 2 минуты", "callback_data": "set_interval_120"}],
                 [{"text": "⏱ Проверка раз в 5 минут", "callback_data": "set_interval_300"}],
@@ -758,9 +767,26 @@ class AvitoTelegramBot:
                 message_id=message_id,
             )
 
+        elif data.startswith("toggle_acc_"):
+            search_name = data[len("toggle_acc_"):]
+            s = load_search(search_name)
+            if s:
+                s.exclude_accessories = not getattr(s, "exclude_accessories", True)
+                save_search(s)
+                status_str = "аксессуары скрываются ✅" if s.exclude_accessories else "аксессуары показываются ❌"
+                self.answer_callback(cb_id, text=f"Фильтр: {status_str}")
+            self.send_searches_list(chat_id, message_id=message_id)
+
         elif data == "set_toggle_junk":
             self.settings.alert_filter_junk = not self.settings.alert_filter_junk
             save_settings(self.settings)
+            self.send_settings_menu(chat_id, message_id=message_id)
+
+        elif data == "set_toggle_accessories":
+            self.settings.alert_filter_accessories = not getattr(self.settings, "alert_filter_accessories", True)
+            save_settings(self.settings)
+            status_str = "включен ✅" if self.settings.alert_filter_accessories else "выключен ❌"
+            self.answer_callback(cb_id, text=f"Фильтр аксессуаров {status_str}")
             self.send_settings_menu(chat_id, message_id=message_id)
 
         elif data == "set_toggle_private":
@@ -835,7 +861,9 @@ class AvitoTelegramBot:
                             if s.private_only and any("Агентство" in t or "Магазин" in t for t in parsed.tags):
                                 continue
 
-                            # Filter junk, parts and clickbait prices if enabled
+                            # Filter accessories, junk, parts and clickbait prices if enabled
+                            if (getattr(s, "exclude_accessories", True) or getattr(self.settings, "alert_filter_accessories", True)) and getattr(parsed, "is_accessory", False):
+                                continue
                             if self.settings.alert_filter_junk and is_likely_fake_or_junk(parsed, min_price=s.min_price):
                                 continue
 
@@ -948,6 +976,7 @@ def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
             "city": s.city,
             "min_price": s.min_price,
             "category_type": s.category_type,
+            "exclude_accessories": getattr(s, "exclude_accessories", True),
             "items": [
                 {
                     "id": it.id,
@@ -958,6 +987,7 @@ def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
                     "market_diff_percent": it.market_diff_percent,
                     "real_price_in_desc": it.real_price_in_desc,
                     "is_combo_listing": it.is_combo_listing,
+                    "is_accessory": getattr(it, "is_accessory", False),
                     "url": it.url,
                     "address": it.address,
                     "metro": it.metro,
@@ -996,7 +1026,10 @@ SUGGESTIONS_DB: list[dict[str, Any]] = [
     {"title": "Skoda Octavia (A8) 1.4 TSI / 2.0 TSI Style Plus", "query": "Skoda Octavia A8 Style", "category": "auto", "meta": "Лифтбек • Матричные фары, цифровая приборка, Canton", "minPrice": 2200000, "keywords": ["шкода", "skoda", "октавия", "octavia", "a8", "style"]},
     {"title": "Geely Monjaro 2.0 4WD Exclusive / Flagship", "query": "Geely Monjaro Flagship", "category": "auto", "meta": "Премиум кроссовер 238 л.с. • 3 экрана, полный привод", "minPrice": 3200000, "keywords": ["джили", "geely", "монджаро", "monjaro", "flagship"]},
     {"title": "Haval Jolion 1.5 4WD Premium / Tech Plus", "query": "Haval Jolion 4WD Premium", "category": "auto", "meta": "Полный привод • Адаптивный круиз, автопарковщик", "minPrice": 1700000, "keywords": ["хавал", "haval", "джолион", "jolion", "premium", "4wd"]},
-    {"title": "Tank 300 2.0 4WD City / Premium", "query": "Tank 300 Premium", "category": "auto", "meta": "Рамный внедорожник • Понижайка, блокировки перед/зад", "minPrice": 3200000, "keywords": ["танк", "tank", "300", "premium"]},
+    {"title": "Гравийный велосипед (Gravel bike) Outleap / Format / Marin", "query": "гравел", "category": "tech", "meta": "Гравийник • Дисковые тормоза • Дропбар • Без мусора и сидушек", "minPrice": 30000, "keywords": ["гравел", "gravel", "гравийный", "велосипед", "велик", "гревел"]},
+    {"title": "Гравийный велосипед Merida Silex 300 / 400 (Gravel)", "query": "Merida Silex", "category": "tech", "meta": "Топовый гравийник Merida • Оборудование Shimano GRX", "minPrice": 50000, "keywords": ["мерида", "merida", "silex", "сайлекс", "гравел", "gravel"]},
+    {"title": "Шоссейный велосипед (Road bike)", "query": "шоссейный велосипед", "category": "tech", "meta": "Шоссер • Дропбар • Легкая рама", "minPrice": 25000, "keywords": ["шоссейник", "шоссейный", "велосипед"]},
+    {"title": "Горный велосипед MTB (Найнер 29 / 27.5)", "query": "горный велосипед 29", "category": "tech", "meta": "Хардтейл MTB • Гидравлические тормоза • 29 колеса", "minPrice": 20000, "keywords": ["горный", "велосипед", "mtb", "мтб", "найнер"]},
     {"title": "DDR5 32GB (2x16GB) 6000MHz Kingston Fury Beast", "query": "DDR5 32GB 6000MHz Kingston", "category": "tech", "meta": "Оперативная память • 6000MHz CL30/CL36 • EXPO / XMP", "minPrice": 7500, "keywords": ["ddr5", "ддр5", "ddr 5", "ддр 5", "оперативка", "память", "kingston", "fury", "32gb"]},
     {"title": "DDR5 32GB (2x16GB) 6000MHz G.Skill Trident Z5 RGB", "query": "DDR5 32GB G.Skill Trident Z5", "category": "tech", "meta": "Премиум память • 6000MHz CL30 • Синхронизация RGB", "minPrice": 9500, "keywords": ["ddr5", "ддр5", "g skill", "g.skill", "trident", "z5", "32gb"]},
     {"title": "DDR5 64GB (2x32GB) 6000MHz CL30", "query": "DDR5 64GB 6000MHz", "category": "tech", "meta": "Комплект 64GB • Идеально для работы и тяжелых задач", "minPrice": 16000, "keywords": ["ddr5", "ддр5", "64gb", "64 gb", "оперативка"]},
