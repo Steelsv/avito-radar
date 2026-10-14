@@ -381,8 +381,41 @@
     </div>
   </div>
 
+  <!-- Scan Progress Modal Overlay -->
+  <div id="scanProgressModal" class="scan-modal-overlay hidden">
+    <div class="scan-modal-card">
+      <div class="scan-radar-glow">
+        <div class="scan-beam"></div>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="2"/>
+        </svg>
+      </div>
+
+      <div class="scan-modal-title" id="scanModalTitle">Сканирование Авито</div>
+      <div class="scan-modal-sub font-mono" id="scanModalSub">Поиск свежих лотов...</div>
+
+      <div class="scan-track">
+        <div id="scanProgressBar" class="scan-bar" style="width: 15%;"></div>
+      </div>
+
+      <div class="scan-status-row font-mono">
+        <span id="scanStatusStepText" class="scan-status-step">Подключение к радару Avito...</span>
+        <span id="scanStatusPercent" class="scan-status-percent">15%</span>
+      </div>
+
+      <div class="scan-steps-pills">
+        <div class="scan-pill active" id="scanPill1"><span>1</span> Запрос</div>
+        <div class="scan-pill" id="scanPill2"><span>2</span> Парсинг</div>
+        <div class="scan-pill" id="scanPill3"><span>3</span> Цены</div>
+        <div class="scan-pill" id="scanPill4"><span>4</span> Финиш</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Application Controller -->
-  <script src="js/suggestions.js?v=1"></script>
-  <script src="js/app.js?v=8"></script>
+  <script src="js/suggestions.js?v=2"></script>
+  <script src="js/app.js?v=9"></script>
 </body>
 </html>

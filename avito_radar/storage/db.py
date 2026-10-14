@@ -89,6 +89,10 @@ DEFAULT_CITIES: dict[str, dict[str, Any]] = {
     "tyumen": {"id": 657410, "name": "Тюмень"},
     "sochi": {"id": 635240, "name": "Сочи"},
     "rossiya": {"id": 621540, "name": "Вся Россия"},
+    "vsya_rossiya": {"id": 621540, "name": "Вся Россия"},
+    "vsya-rossiya": {"id": 621540, "name": "Вся Россия"},
+    "россия": {"id": 621540, "name": "Вся Россия"},
+    "вся россия": {"id": 621540, "name": "Вся Россия"},
 }
 
 

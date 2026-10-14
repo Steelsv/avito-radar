@@ -90,14 +90,17 @@ def acquire_bot_lock() -> bool:
 
 # Format: (label, query, category_path, default_pmin)
 POPULAR_PRODUCTS = [
-    ("📱 iPhone 16", "iPhone 16", "telefony/mobilnye_telefony/apple", 50000),
-    ("📱 iPhone 15", "iPhone 15", "telefony/mobilnye_telefony/apple", 40000),
-    ("📱 iPhone 14", "iPhone 14", "telefony/mobilnye_telefony/apple", 30000),
-    ("🎮 PlayStation 5", "PlayStation 5", "igry_pristavki_i_programmy/igrovye_pristavki", 25000),
-    ("💻 MacBook Air", "MacBook Air", "noutbuki/apple", 30000),
-    ("🎮 Xbox Series X", "Xbox Series X", "igry_pristavki_i_programmy/igrovye_pristavki", 25000),
-    ("📺 Телевизор 55", "Телевизор 55", "audio_i_video/televizory_i_proektory", 15000),
-    ("💻 RTX 4070", "RTX 4070", "tovary_dlya_kompyutera/komplektuyuschie/videokarty", 35000),
+    ("⚡ DDR5 32GB 6000MHz", "DDR5 32GB 6000MHz", "tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat", 7000),
+    ("💻 RTX 4070 Super", "RTX 4070 Super", "tovary_dlya_kompyutera/komplektuyuschie/videokarty", 50000),
+    ("📱 iPhone 16 Pro Max", "iPhone 16 Pro Max", "telefony/mobilnye_telefony/apple", 90000),
+    ("📱 iPhone 15 128GB", "iPhone 15", "telefony/mobilnye_telefony/apple", 45000),
+    ("🎮 PlayStation 5 Slim", "PlayStation 5 Slim", "igry_pristavki_i_programmy/igrovye_pristavki", 38000),
+    ("⚡ Ryzen 7 7800X3D", "Ryzen 7 7800X3D", "tovary_dlya_kompyutera/komplektuyuschie/processory", 28000),
+    ("💻 MacBook Air M2 / M3", "MacBook Air M2", "noutbuki/apple", 65000),
+    ("🎮 Steam Deck OLED", "Steam Deck OLED", "igry_pristavki_i_programmy/igrovye_pristavki", 45000),
+    ("🚗 Lada Vesta SW Cross", "Lada Vesta SW Cross", "avtomobili", 700000),
+    ("🚗 BMW 320d (G20)", "BMW 320d M Sport", "avtomobili", 2500000),
+    ("🚗 Toyota Camry 2.5", "Toyota Camry 2.5", "avtomobili", 2000000),
 ]
 
 POPULAR_CITIES = [
@@ -249,15 +252,15 @@ class AvitoTelegramBot:
             "inline_keyboard": [
                 [
                     {
-                        "text": "Открыть в терминале",
+                        "text": "⚡️ ТЕРМИНАЛ РАДАРА (MINI APP)",
                         "web_app": {"url": miniapp_url},
-                        "icon_custom_emoji_id": TG_EMOJI_LIGHTNING,
-                    },
+                    }
+                ],
+                [
                     {
-                        "text": "На Авито",
+                        "text": "🔗 ОТКРЫТЬ НА АВИТО",
                         "url": item.url,
-                        "icon_custom_emoji_id": TG_EMOJI_LINK,
-                    },
+                    }
                 ]
             ]
         }
@@ -285,10 +288,27 @@ class AvitoTelegramBot:
             "inline_keyboard": [
                 [
                     {
-                        "text": "ОТКРЫТЬ ТЕРМИНАЛ (MINI APP)",
+                        "text": "⚡️ ТЕРМИНАЛ РАДАРА (MINI APP)",
                         "web_app": {"url": miniapp_url},
-                        "icon_custom_emoji_id": TG_EMOJI_LIGHTNING,
-                    },
+                    }
+                ],
+                [
+                    {
+                        "text": "➕ СОЗДАТЬ НОВЫЙ РАДАР",
+                        "callback_data": "menu_add",
+                    }
+                ],
+                [
+                    {
+                        "text": "📋 МОИ РАДАРЫ И ВЫГРУЗКА",
+                        "callback_data": "menu_list",
+                    }
+                ],
+                [
+                    {
+                        "text": "⚙️ НАСТРОЙКИ МОНИТОРИНГА 24/7",
+                        "callback_data": "menu_settings",
+                    }
                 ],
             ]
         }
@@ -296,96 +316,95 @@ class AvitoTelegramBot:
     def send_main_menu(self, chat_id: int, message_id: int | None = None) -> None:
         session = self.get_session(chat_id)
         session.state = "IDLE"
-        watch_status = f"{tg_e(TG_EMOJI_CHECK, '✅')} ВКЛ (24/7)" if self.monitoring_active else f"{tg_e(TG_EMOJI_WARN, '❗️')} ВЫКЛ"
+        watch_status = "🟢 24/7 АКТИВЕН" if self.monitoring_active else "🔴 ВЫКЛЮЧЕН"
         searches = list_searches(user_id=chat_id)
         text = (
-            f"{tg_e(TG_EMOJI_RADAR, '👁')} <b>СМОТРЯЩИЙ ЗА АВИТО // RADAR TERMINAL</b>\n\n"
-            f"{tg_e(TG_EMOJI_LIGHTNING, '⚡')} <b>Все управление перенесено в Mini App:</b>\n"
-            f"• {tg_e(TG_EMOJI_SEARCH, '🔎')} Создание любого нового поиска и запуск радара\n"
-            f"• {tg_e(TG_EMOJI_TRASH, '🗑')} Удаление существующих поисков в 1 клик\n"
-            f"• {tg_e(TG_EMOJI_SHIELD, '🛡')} Карточки с фильтрацией дефектов и байт-цен\n"
-            f"• {tg_e(TG_EMOJI_GROWTH, '📈')} Встроенная таблица (полная замена Excel)\n\n"
-            f"{tg_e(TG_EMOJI_RADAR, '👁')} Статус мониторинга: <b>{watch_status}</b>\n"
-            f"{tg_e(TG_EMOJI_SEARCH, '🔎')} Активных радаров: <b>{len(searches)}</b>\n\n"
-            f"<i>В этот чат приходят только карточки новых выгодных объявлений.</i>\n\n"
-            f"Нажмите кнопку ниже для перехода в терминал 👇"
+            f"📡 <b>СМОТРЯЩИЙ ЗА АВИТО // RADAR TERMINAL</b>\n"
+            f"<code>[ ⠋ RADAR SCANNING 24/7 ] ━━━━━━━━━━━━ 100%</code>\n\n"
+            f"🟢 <b>Статус радара:</b> <code>{watch_status}</code>\n"
+            f"🔎 <b>Активных радаров:</b> <code>{len(searches)} шт.</code>\n\n"
+            f"⚡ <b>Все функции доступны в едином Mini App:</b>\n"
+            f"• 🔎 Мгновенный поиск товаров и авто с подсказками\n"
+            f"• 📊 Оценка рыночной цены и подсветка скидок до 50%\n"
+            f"• 🛡 Защита от байт-цен (100 ₽), дефектов и мусора\n"
+            f"• 📈 Режим таблицы (полная замена Excel прямо в Telegram)\n\n"
+            f"<i>Уведомления о новых горячих предложениях поступают сюда мгновенно.</i>\n\n"
+            f"👇 <b>Нажмите кнопку ниже на всю ширину для входа:</b>"
         )
         self.render_menu(chat_id, text, self.main_menu_keyboard(chat_id), message_id=message_id)
 
     def send_add_menu(self, chat_id: int, message_id: int | None = None) -> None:
-        text = "<b>Как вы хотите настроить поиск?</b>"
+        text = (
+            "📡 <b>НАСТРОЙКА НОВОГО РАДАРА</b>\n\n"
+            "Выберите способ настройки отслеживания:"
+        )
         kb = {
             "inline_keyboard": [
-                [{"text": "🔍 Выбрать товар и город", "callback_data": "add_wizard_product"}],
-                [{"text": "🔗 Вставить ссылку с Авито", "callback_data": "add_by_url"}],
-                [{"text": "🔙 В главное меню", "callback_data": "menu_main"}],
+                [{"text": "⚡️ Выбрать товар и город (Каталог)", "callback_data": "add_wizard_product"}],
+                [{"text": "🔗 Вставить скопированную ссылку с Авито", "callback_data": "add_by_url"}],
+                [{"text": "🔙 Назад в главное меню", "callback_data": "menu_main"}],
             ]
         }
         self.render_menu(chat_id, text, kb, message_id=message_id)
 
     def send_product_selection(self, chat_id: int, message_id: int | None = None) -> None:
-        text = "📱 <b>Шаг 1 из 2. Что ищем?</b>\nВыберите товар из каталога (с авто-категорией и мин. ценой) или введите своё:"
+        text = (
+            "📡 <b>ШАГ 1 ИЗ 2: ЧТО ОТСЛЕЖИВАТЬ?</b>\n\n"
+            "Выберите популярную категорию или введите свой запрос:"
+        )
         buttons = []
-        row = []
         for idx, (label, *_) in enumerate(POPULAR_PRODUCTS):
-            row.append({"text": label, "callback_data": f"pick_prod_{idx}"})
-            if len(row) == 2:
-                buttons.append(row)
-                row = []
-        if row:
-            buttons.append(row)
-        buttons.append([{"text": "✏️ Ввести другое название", "callback_data": "pick_prod_custom"}])
-        buttons.append([{"text": "🔙 Назад", "callback_data": "menu_add"}])
-
+            buttons.append([{"text": label, "callback_data": f"pick_prod_{idx}"}])
+        buttons.append([{"text": "✏️ Ввести другое название вручную", "callback_data": "pick_prod_custom"}])
+        buttons.append([{"text": "🔙 Назад в меню", "callback_data": "menu_add"}])
         kb = {"inline_keyboard": buttons}
         self.render_menu(chat_id, text, kb, message_id=message_id)
 
     def send_city_selection(self, chat_id: int, message_id: int | None = None) -> None:
         session = self.get_session(chat_id)
-        text = f"📍 <b>Шаг 2 из 2. В каком городе искать?</b>\nТовар: <b>{html.escape(session.temp_query)}</b>\n\nВыберите город:"
+        text = (
+            f"📍 <b>ШАГ 2 ИЗ 2: ВЫБОР РЕГИОНА</b>\n\n"
+            f"Товар: <b>{html.escape(session.temp_query)}</b>\n\n"
+            f"Выберите город или отслеживание по всей стране:"
+        )
         buttons = []
-        row = []
         for label, slug in POPULAR_CITIES:
-            row.append({"text": label, "callback_data": f"pick_city_{slug}_{label}"})
-            if len(row) == 2:
-                buttons.append(row)
-                row = []
-        if row:
-            buttons.append(row)
-        buttons.append([{"text": "✏️ Ввести другой город", "callback_data": "pick_city_custom"}])
+            icon = "🌐" if slug == "rossiya" else "📍"
+            buttons.append([{"text": f"{icon} {label}", "callback_data": f"pick_city_{slug}_{label}"}])
+        buttons.append([{"text": "✏️ Ввести другой город вручную", "callback_data": "pick_city_custom"}])
         buttons.append([{"text": "🔙 Назад к товарам", "callback_data": "add_wizard_product"}])
-
         kb = {"inline_keyboard": buttons}
         self.render_menu(chat_id, text, kb, message_id=message_id)
 
     def send_searches_list(self, chat_id: int, message_id: int | None = None) -> None:
         searches = list_searches(user_id=chat_id)
         if not searches:
-            text = "📋 <b>У вас пока нет сохранённых поисков.</b>\nНажмите «➕ Добавить поиск», чтобы создать первый!"
+            text = (
+                "📋 <b>АКТИВНЫЕ РАДАРЫ</b>\n\n"
+                "У вас пока нет сохранённых поисков.\n"
+                "Нажмите кнопку ниже, чтобы запустить первый радар!"
+            )
             kb = {
                 "inline_keyboard": [
-                    [{"text": "➕ Добавить поиск", "callback_data": "menu_add"}],
+                    [{"text": "➕ ДОБАВИТЬ НОВЫЙ РАДАР", "callback_data": "menu_add"}],
                     [{"text": "🔙 В главное меню", "callback_data": "menu_main"}],
                 ]
             }
             self.render_menu(chat_id, text, kb, message_id=message_id)
             return
 
-        text = "📋 <b>Ваши активные поиски:</b>\n\n"
+        text = f"📋 <b>АКТИВНЫЕ РАДАРЫ ({len(searches)} шт.):</b>\n\n"
         buttons = []
         for idx, s in enumerate(searches, start=1):
             listings = load_listings(s)
-            pmin_info = f" · 💰 от {s.min_price:,} ₽" if s.min_price else " · 💰 Мин. цена не задана"
+            pmin_info = f" · от {s.min_price:,} ₽" if s.min_price else ""
             text += f"<b>{idx}. {html.escape(s.title)}</b>\n"
-            text += f"   📍 Город: {html.escape(s.city)} · В базе: {len(listings)} шт.{pmin_info}\n"
-            text += f"   🔑 Имя: <code>{s.name}</code>\n\n"
-            buttons.append([
-                {"text": f"📊 Excel", "callback_data": f"action_scan_{s.name}"},
-                {"text": f"💰 Мин. цена ({s.min_price or 'нет'})", "callback_data": f"set_pmin_{s.name}"},
-                {"text": f"❌", "callback_data": f"action_del_{s.name}"},
-            ])
+            text += f"   📍 {html.escape(s.city)} · В базе: {len(listings)} лотов{pmin_info}\n\n"
+            buttons.append([{"text": f"📊 Скачать Excel — {s.title}", "callback_data": f"action_scan_{s.name}"}])
+            buttons.append([{"text": f"💰 Порог цены ({s.min_price or '0'} ₽) — {s.title}", "callback_data": f"set_pmin_{s.name}"}])
+            buttons.append([{"text": f"🗑 Удалить «{s.title}»", "callback_data": f"action_del_{s.name}"}])
 
-        buttons.append([{"text": "➕ Добавить ещё поиск", "callback_data": "menu_add"}])
+        buttons.append([{"text": "➕ СОЗДАТЬ ЕЩЁ РАДАР", "callback_data": "menu_add"}])
         buttons.append([{"text": "🔙 В главное меню", "callback_data": "menu_main"}])
 
         kb = {"inline_keyboard": buttons}
@@ -393,24 +412,23 @@ class AvitoTelegramBot:
 
     def send_settings_menu(self, chat_id: int, message_id: int | None = None) -> None:
         self.settings = load_settings()
-        priv_text = "Только частники: ✅ Да" if self.settings.alert_private_only else "Только частники: ❌ Все"
-        junk_text = "Фильтр мусора и цен: ✅ ВКЛ" if self.settings.alert_filter_junk else "Фильтр мусора и цен: ❌ ВЫКЛ"
+        priv_text = "👤 Продавцы: ТОЛЬКО ЧАСТНИКИ ✅" if self.settings.alert_private_only else "👥 Продавцы: ВСЕ (с магазинами) ❌"
+        junk_text = "🛡 Анти-мусор и байт-цены: ВКЛЮЧЕНО ✅" if self.settings.alert_filter_junk else "⚠️ Анти-мусор: ВЫКЛЮЧЕНО ❌"
         text = (
-            "⚙️ <b>Настройки «Смотрящего за Авито»</b>\n\n"
-            f"• Интервал проверки: <b>{self.settings.watch_interval:.0f} сек</b>\n"
-            f"• Фильтр продавцов: <b>{'Только частные лица' if self.settings.alert_private_only else 'Все (включая магазины)'}</b>\n"
-            f"• Фильтр мусора/запчастей/байт-цен: <b>{'Включён ✅' if self.settings.alert_filter_junk else 'Выключен ❌'}</b>\n"
-            f"• Отсекать старые переопубликованные: <b>{'Да' if self.settings.alert_no_republished else 'Нет'}</b>"
+            "⚙️ <b>НАСТРОЙКИ МОНИТОРИНГА 24/7</b>\n\n"
+            f"• Проверка новинок: <b>каждые {self.settings.watch_interval:.0f} сек</b>\n"
+            f"• Фильтр продавцов: <b>{'Только частники' if self.settings.alert_private_only else 'Все предложения'}</b>\n"
+            f"• Фильтр фейковых цен (100 ₽): <b>{'Активен ✅' if self.settings.alert_filter_junk else 'Выключен'}</b>\n"
+            f"• Игнорировать дубликаты: <b>{'Да' if self.settings.alert_no_republished else 'Нет'}</b>\n\n"
+            "Нажмите на нужную кнопку для переключения параметра:"
         )
         kb = {
             "inline_keyboard": [
                 [{"text": priv_text, "callback_data": "set_toggle_private"}],
                 [{"text": junk_text, "callback_data": "set_toggle_junk"}],
-                [
-                    {"text": "⏱ 1 мин", "callback_data": "set_interval_60"},
-                    {"text": "⏱ 2 мин", "callback_data": "set_interval_120"},
-                    {"text": "⏱ 5 мин", "callback_data": "set_interval_300"},
-                ],
+                [{"text": "⏱ Проверка раз в 1 минуту", "callback_data": "set_interval_60"}],
+                [{"text": "⏱ Проверка раз в 2 минуты", "callback_data": "set_interval_120"}],
+                [{"text": "⏱ Проверка раз в 5 минут", "callback_data": "set_interval_300"}],
                 [{"text": "🔙 В главное меню", "callback_data": "menu_main"}],
             ]
         }
@@ -887,11 +905,28 @@ SUGGESTIONS_DB: list[dict[str, Any]] = [
     {"title": "Geely Monjaro 2.0 4WD Exclusive / Flagship", "query": "Geely Monjaro Flagship", "category": "auto", "meta": "Премиум кроссовер 238 л.с. • 3 экрана, полный привод", "minPrice": 3200000, "keywords": ["джили", "geely", "монджаро", "monjaro", "flagship"]},
     {"title": "Haval Jolion 1.5 4WD Premium / Tech Plus", "query": "Haval Jolion 4WD Premium", "category": "auto", "meta": "Полный привод • Адаптивный круиз, автопарковщик", "minPrice": 1700000, "keywords": ["хавал", "haval", "джолион", "jolion", "premium", "4wd"]},
     {"title": "Tank 300 2.0 4WD City / Premium", "query": "Tank 300 Premium", "category": "auto", "meta": "Рамный внедорожник • Понижайка, блокировки перед/зад", "minPrice": 3200000, "keywords": ["танк", "tank", "300", "premium"]},
+    {"title": "DDR5 32GB (2x16GB) 6000MHz Kingston Fury Beast", "query": "DDR5 32GB 6000MHz Kingston", "category": "tech", "meta": "Оперативная память • 6000MHz CL30/CL36 • EXPO / XMP", "minPrice": 7500, "keywords": ["ddr5", "ддр5", "ddr 5", "ддр 5", "оперативка", "память", "kingston", "fury", "32gb"]},
+    {"title": "DDR5 32GB (2x16GB) 6000MHz G.Skill Trident Z5 RGB", "query": "DDR5 32GB G.Skill Trident Z5", "category": "tech", "meta": "Премиум память • 6000MHz CL30 • Синхронизация RGB", "minPrice": 9500, "keywords": ["ddr5", "ддр5", "g skill", "g.skill", "trident", "z5", "32gb"]},
+    {"title": "DDR5 64GB (2x32GB) 6000MHz CL30", "query": "DDR5 64GB 6000MHz", "category": "tech", "meta": "Комплект 64GB • Идеально для работы и тяжелых задач", "minPrice": 16000, "keywords": ["ddr5", "ддр5", "64gb", "64 gb", "оперативка"]},
+    {"title": "DDR5 SODIMM 16GB / 32GB для ноутбука", "query": "DDR5 SODIMM 4800MHz 5600MHz", "category": "tech", "meta": "Память для игровых ноутбуков • 4800/5600MHz", "minPrice": 3500, "keywords": ["ddr5", "ддр5", "sodimm", "содимм", "для ноутбука"]},
+    {"title": "DDR4 32GB (2x16GB) 3200MHz / 3600MHz Kingston Fury", "query": "DDR4 32GB 3200MHz Kingston Fury", "category": "tech", "meta": "Надежная память DDR4 • 3200-3600MHz", "minPrice": 4500, "keywords": ["ddr4", "ддр4", "ddr 4", "ддр 4", "оперативка", "32gb"]},
+    {"title": "NVIDIA GeForce RTX 4070 Super 12GB", "query": "RTX 4070 Super 12GB", "category": "tech", "meta": "GDDR6X 12GB • DLSS 3.5 Frame Generation", "minPrice": 55000, "keywords": ["видеокарта", "rtx", "4070 super", "nvidia", "видяха"]},
+    {"title": "NVIDIA GeForce RTX 4080 Super 16GB", "query": "RTX 4080 Super 16GB", "category": "tech", "meta": "GDDR6X 16GB • Мощнейшая 4K графика", "minPrice": 95000, "keywords": ["видеокарта", "rtx", "4080 super", "nvidia"]},
+    {"title": "NVIDIA GeForce RTX 4090 24GB", "query": "RTX 4090 24GB", "category": "tech", "meta": "Флагман 24GB • Топовая производительность", "minPrice": 160000, "keywords": ["видеокарта", "rtx", "4090", "nvidia"]},
+    {"title": "NVIDIA GeForce RTX 4060 8GB / 4060 Ti", "query": "RTX 4060 8GB", "category": "tech", "meta": "DLSS 3 • Низкое энергопотребление", "minPrice": 27000, "keywords": ["видеокарта", "rtx", "4060", "4060 ti", "nvidia"]},
+    {"title": "AMD Radeon RX 6700 XT 12GB", "query": "RX 6700 XT 12GB", "category": "tech", "meta": "12GB GDDR6 • Отличный выбор для 2K", "minPrice": 25000, "keywords": ["видеокарта", "rx", "6700 xt", "amd", "radeon"]},
+    {"title": "AMD Radeon RX 7800 XT 16GB", "query": "RX 7800 XT 16GB", "category": "tech", "meta": "16GB GDDR6 • Мощный 2K/4K гейминг", "minPrice": 48000, "keywords": ["видеокарта", "rx", "7800 xt", "amd"]},
+    {"title": "AMD Ryzen 7 7800X3D (AM5)", "query": "Ryzen 7 7800X3D", "category": "tech", "meta": "Лучший процессор для игр • 3D V-Cache • AM5", "minPrice": 29000, "keywords": ["процессор", "проц", "ryzen", "7800x3d", "am5", "amd"]},
+    {"title": "AMD Ryzen 5 7500F / 7600 (AM5)", "query": "Ryzen 5 7500F", "category": "tech", "meta": "Топ за свои деньги под AM5 и DDR5", "minPrice": 11000, "keywords": ["процессор", "проц", "ryzen", "7500f", "7600", "am5"]},
+    {"title": "Intel Core i5 13400F / 14400F (LGA1700)", "query": "Core i5 13400F", "category": "tech", "meta": "10 ядер • Отличный универсальный процессор", "minPrice": 14000, "keywords": ["процессор", "intel", "i5", "13400f", "14400f"]},
+    {"title": "SSD M.2 NVMe 1TB Samsung 980 / 990 Pro", "query": "Samsung 980 Pro 1TB", "category": "tech", "meta": "PCIe 4.0 • Скорость до 7450 МБ/с", "minPrice": 7500, "keywords": ["ssd", "ссд", "m.2", "nvme", "samsung", "980 pro", "990 pro", "1tb"]},
+    {"title": "SSD M.2 NVMe 2TB Kingston KC3000 / Samsung 990", "query": "SSD 2TB M.2 NVMe", "category": "tech", "meta": "Объем 2000GB • Высочайшая надежность", "minPrice": 14000, "keywords": ["ssd", "ссд", "2tb", "m.2", "nvme", "kc3000"]},
+    {"title": "PlayStation 5 Slim с дисководом 1TB", "query": "PlayStation 5 Slim 1TB", "category": "tech", "meta": "Новая ревизия Slim • 1TB SSD • Геймпад DualSense", "minPrice": 42000, "keywords": ["сони", "playstation", "ps5", "slim", "плойка"]},
+    {"title": "Steam Deck OLED 512GB / 1TB", "query": "Steam Deck OLED", "category": "tech", "meta": "OLED 90Hz экран • Автономность • Портативный ПК", "minPrice": 45000, "keywords": ["steam deck", "стим дек", "oled"]},
+    {"title": "iPhone 16 Pro Max 256GB / 512GB", "query": "iPhone 16 Pro Max 256GB", "category": "tech", "meta": "Титановый корпус • Камера 48 Мп • Чип A18 Pro", "minPrice": 95000, "keywords": ["айфон", "iphone", "16 pro max", "apple"]},
     {"title": "iPhone 15 Pro Max 256GB / 512GB", "query": "iPhone 15 Pro Max 256GB", "category": "tech", "meta": "Титановый корпус • Чип Apple A17 Pro • Камера 5x", "minPrice": 85000, "keywords": ["айфон", "iphone", "15 pro max", "apple"]},
     {"title": "iPhone 15 128GB", "query": "iPhone 15 128GB", "category": "tech", "meta": "Dynamic Island • Камера 48 Мп • USB-C", "minPrice": 55000, "keywords": ["айфон", "iphone", "15", "apple"]},
-    {"title": "PlayStation 5 Slim с дисководом 1TB", "query": "PlayStation 5 Slim 1TB", "category": "tech", "meta": "Новая ревизия Slim • 1TB SSD • Геймпад DualSense", "minPrice": 42000, "keywords": ["сони", "playstation", "ps5", "slim"]},
-    {"title": "NVIDIA GeForce RTX 4070 Super 12GB", "query": "RTX 4070 Super 12GB", "category": "tech", "meta": "GDDR6X 12GB • DLSS 3.5 Frame Generation", "minPrice": 55000, "keywords": ["видеокарта", "rtx", "4070 super", "nvidia"]},
-    {"title": "AMD Radeon RX 6700 XT 12GB", "query": "RX 6700 XT 12GB", "category": "tech", "meta": "12GB GDDR6 • Отличный выбор для 2K", "minPrice": 25000, "keywords": ["видеокарта", "rx", "6700 xt", "amd"]}
+    {"title": "MacBook Air M2 8/256GB / 16/512GB", "query": "MacBook Air M2", "category": "tech", "meta": "Экран Liquid Retina 13.6 • Тонкий алюминий • До 18ч", "minPrice": 65000, "keywords": ["макбук", "macbook", "air m2", "apple", "ноут"]}
 ]
 
 
@@ -1142,18 +1177,30 @@ def start_healthcheck_server() -> None:
                     c_name = ""
                     s_rec = None
                     if query:
-                        city_slug = transliterate(city).replace(" ", "_").lower()
+                        clean_city = (city or "").lower().strip()
+                        if clean_city in ("rossiya", "россия", "вся россия", "vsya_rossiya", "vsya-rossiya", "all", "all_russia", "russia"):
+                            city_slug = "rossiya"
+                            loc_id = "621540"
+                            city_display = "Вся Россия"
+                        else:
+                            city_slug = transliterate(city).replace(" ", "_").lower()
+                            cache = load_locations_cache()
+                            city_entry = (cache.get("cities") or {}).get(city_slug)
+                            if not city_entry:
+                                for k, v in (cache.get("cities") or {}).items():
+                                    if str(v.get("name", "")).lower() == clean_city or k == clean_city:
+                                        city_entry = v
+                                        city_slug = k
+                                        break
+                            loc_id = str(city_entry["id"]) if city_entry else "661420"
+                            city_display = city_entry.get("name", city) if city_entry else city
+
                         clean_q = transliterate(query).replace(" ", "_").lower()
                         c_name = re.sub(r"[^a-z0-9_-]+", "_", f"u{uid}_{clean_q}_{city_slug}").strip("_")
                         encoded_q = urllib.parse.quote(query)
                         target_url = f"https://www.avito.ru/{city_slug}?q={encoded_q}"
                         if min_price > 0:
                             target_url += f"&pmin={min_price}"
-
-                        cache = load_locations_cache()
-                        city_entry = (cache.get("cities") or {}).get(city_slug)
-                        loc_id = str(city_entry["id"]) if city_entry else "661420"
-                        city_display = city_entry.get("name", city) if city_entry else city
 
                         s_rec = load_search(c_name)
                         if not s_rec:
@@ -1243,7 +1290,7 @@ def start_healthcheck_server() -> None:
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
-                    self.wfile.write(json.dumps({"ok": True, "count": count, "bundle": bundle_data}).encode("utf-8"))
+                    self.wfile.write(json.dumps({"ok": True, "count": count, "searchId": name, "bundle": bundle_data}).encode("utf-8"))
                     return
                 except Exception as exc:
                     logger.warning("Error scanning search via API: %s", exc)

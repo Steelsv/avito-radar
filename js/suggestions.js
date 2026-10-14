@@ -6,8 +6,82 @@
 (function () {
   'use strict';
 
-  // Slang & transliteration normalizer
+  // Slang, hardware abbreviations & transliteration normalizer
   const SLANG_MAP = {
+    // RAM / DDR
+    'ддр5': 'ddr5',
+    'ддр 5': 'ddr5',
+    'ддр4': 'ddr4',
+    'ддр 4': 'ddr4',
+    'ддр': 'ddr5',
+    'ddr': 'ddr5',
+    'оперативка': 'ddr5 32gb',
+    'озу': 'ddr5 32gb',
+    'память': 'ddr5',
+    // GPUs
+    'видяха': 'rtx',
+    'видюха': 'rtx',
+    'видеокарта': 'rtx',
+    'ртх': 'rtx',
+    'радион': 'radeon rx',
+    'радики': 'radeon rx',
+    // CPUs & Boards
+    'проц': 'ryzen',
+    'процессор': 'ryzen',
+    'райзен': 'ryzen',
+    'интел': 'core i5',
+    'мать': 'материнская плата b650',
+    'материнка': 'материнская плата',
+    'мамка': 'материнская плата',
+    'ссд': 'ssd m.2 nvme',
+    'бп': 'блок питания',
+    'водянка': 'водяное охлаждение 360',
+    'кулер': 'кулер для процессора',
+    // Consoles & Gaming
+    'плойка': 'playstation 5',
+    'сонька': 'playstation 5',
+    'пс5': 'playstation 5',
+    'пс4': 'playstation 4',
+    'бокс': 'xbox series x',
+    'хбокс': 'xbox series x',
+    'сыч': 'nintendo switch oled',
+    'свич': 'nintendo switch',
+    'стим дек': 'steam deck oled',
+    'стимдек': 'steam deck oled',
+    'дэк': 'steam deck oled',
+    // Apple & Phones
+    'айфон': 'iphone',
+    'ифон': 'iphone',
+    'эппл': 'apple',
+    'яблоко': 'apple',
+    'про макс': 'pro max',
+    'макбук': 'macbook air',
+    'мак': 'macbook',
+    'эир': 'macbook air',
+    'ноут': 'ноутбук',
+    'уши': 'airpods pro',
+    'подсы': 'airpods pro',
+    'наушники': 'airpods pro',
+    'часы': 'apple watch',
+    'вотчи': 'apple watch',
+    'самсунг': 'samsung galaxy',
+    'сяоми': 'xiaomi',
+    'редми': 'redmi',
+    'пиксель': 'google pixel',
+    // Appliances & Tools
+    'пылесос': 'dyson',
+    'дайсон': 'dyson',
+    'стайлер': 'dyson airwrap',
+    'фен': 'dyson supersonic',
+    'робот': 'робот пылесос roborock',
+    'кофемашина': 'кофемашина delonghi',
+    'перфоратор': 'перфоратор makita',
+    // Wheels & Tires
+    'колеса': 'колеса r17 r18',
+    'диски': 'литые диски r17 r18',
+    'резина': 'зимняя резина r16 r17',
+    'шины': 'летние шины r16 r17',
+    // Cars
     'бмв': 'bmw',
     'бумер': 'bmw',
     'мерс': 'mercedes',
@@ -97,24 +171,7 @@
     'макан': 'porsche macan',
     'панамера': 'porsche panamera',
     'гелик': 'mercedes g 63 amg',
-    'гелендваген': 'mercedes g-класс',
-    'айфон': 'iphone',
-    'ифон': 'iphone',
-    'про макс': 'pro max',
-    'макбук': 'macbook',
-    'мак': 'macbook',
-    'плойка': 'playstation',
-    'пс5': 'playstation 5',
-    'пс4': 'playstation 4',
-    'сонька': 'playstation',
-    'бокс': 'xbox',
-    'хбокс': 'xbox',
-    'стим дек': 'steam deck',
-    'видюха': 'rtx',
-    'видеокарта': 'rtx',
-    'самсунг': 'samsung',
-    'сяоми': 'xiaomi',
-    'дайсон': 'dyson'
+    'гелендваген': 'mercedes g-класс'
   };
 
   const CATALOG = [
@@ -934,6 +991,416 @@
       meta: 'Интеллектуальный контроль температуры • Магнитные насадки, бережная сушка',
       minPrice: 25000,
       keywords: ['дайсон', 'dyson', 'supersonic', 'суперсоник', 'фен']
+    },
+
+    // --- КОМПЬЮТЕРЫ: ОПЕРАТИВНАЯ ПАМЯТЬ (RAM DDR5 / DDR4) ---
+    {
+      title: 'DDR5 32GB (2x16GB) 6000MHz CL30 Kingston Fury Beast',
+      query: 'DDR5 32GB 6000MHz Kingston',
+      category: 'tech',
+      badge: '⚡ ОЗУ • DDR5 32GB 6000MHz',
+      meta: 'Комплект 32GB (2x16GB) • Низкие тайминги CL30/CL36 • EXPO и XMP профили',
+      minPrice: 7500,
+      keywords: ['ddr5', 'ддр5', 'ddr 5', 'ддр 5', 'оперативка', 'память', 'kingston', 'fury', '32gb', '6000mhz', 'озу', 'ram']
+    },
+    {
+      title: 'DDR5 32GB (2x16GB) 6000MHz G.Skill Trident Z5 RGB',
+      query: 'DDR5 32GB G.Skill Trident Z5',
+      category: 'tech',
+      badge: '⚡ ОЗУ • G.Skill Trident Z5',
+      meta: 'Флагманские чипы Hynix A-die • CL30 • Настраиваемая яркая подсветка RGB',
+      minPrice: 9500,
+      keywords: ['ddr5', 'ддр5', 'ddr 5', 'g.skill', 'g skill', 'trident z5', 'rgb', '32gb', '6000mhz', 'cl30']
+    },
+    {
+      title: 'DDR5 32GB (2x16GB) 6400MHz Corsair Vengeance RGB',
+      query: 'DDR5 32GB 6400MHz Corsair',
+      category: 'tech',
+      badge: '⚡ ОЗУ • Corsair Vengeance',
+      meta: 'Высокая частота 6400MHz • Алюминиевые радиаторы охлаждения',
+      minPrice: 9000,
+      keywords: ['ddr5', 'ддр5', 'corsair', 'vengeance', '32gb', '6400mhz', 'оперативка']
+    },
+    {
+      title: 'DDR5 32GB (2x16GB) 6000MHz ADATA XPG Lancer Blade',
+      query: 'DDR5 32GB ADATA XPG 6000MHz',
+      category: 'tech',
+      badge: '⚡ ОЗУ • ADATA XPG',
+      meta: 'Компактные радиаторы под башенные кулеры • Чипы SK Hynix',
+      minPrice: 7500,
+      keywords: ['ddr5', 'ддр5', 'adata', 'xpg', 'lancer', '32gb', '6000mhz']
+    },
+    {
+      title: 'DDR5 64GB (2x32GB) 6000MHz CL30 Kingston / G.Skill',
+      query: 'DDR5 64GB 6000MHz',
+      category: 'tech',
+      badge: '⚡ ОЗУ • DDR5 64GB',
+      meta: 'Мощный объем 64GB для 3D рендера, работы и топовых игр без компромиссов',
+      minPrice: 16000,
+      keywords: ['ddr5', 'ддр5', '64gb', '64 gb', 'оперативка', 'память', '2x32gb']
+    },
+    {
+      title: 'DDR5 16GB (1x16GB) 4800MHz / 5600MHz Kingston Fury',
+      query: 'DDR5 16GB 5600MHz',
+      category: 'tech',
+      badge: '⚡ ОЗУ • DDR5 16GB',
+      meta: 'Одиночная планка 16GB для бюджетных сборок или апгрейда второго слота',
+      minPrice: 3500,
+      keywords: ['ddr5', 'ддр5', '16gb', '16 gb', 'память', 'оперативка']
+    },
+    {
+      title: 'DDR5 SODIMM 16GB / 32GB для ноутбука',
+      query: 'DDR5 SODIMM 4800MHz 5600MHz',
+      category: 'tech',
+      badge: '⚡ ОЗУ • Ноутбук DDR5',
+      meta: 'Форм-фактор SO-DIMM для игровых ноутбуков ASUS, Lenovo Legion, MSI, Acer',
+      minPrice: 3500,
+      keywords: ['ddr5', 'ддр5', 'sodimm', 'содимм', 'ноутбук', 'для ноутбука', 'лэптоп']
+    },
+    {
+      title: 'Комплект DDR5 32GB + AM5 B650 + Ryzen 7500F',
+      query: 'Комплект AM5 B650 Ryzen 7500F DDR5',
+      category: 'tech',
+      badge: '⚡ Сет • AM5 + DDR5',
+      meta: 'Готовая связка: процессор Ryzen 5 7500F + плата B650 + память DDR5 32GB',
+      minPrice: 28000,
+      keywords: ['комплект', 'сет', 'am5', 'b650', 'ddr5', 'ддр5', 'ryzen 7500f', 'связка']
+    },
+    {
+      title: 'DDR4 32GB (2x16GB) 3200MHz / 3600MHz Kingston Fury Beast',
+      query: 'DDR4 32GB 3200MHz Kingston Fury',
+      category: 'tech',
+      badge: '⚡ ОЗУ • DDR4 32GB',
+      meta: 'Популярнейший надежный комплект DDR4 для платформы AM4 и LGA1700',
+      minPrice: 4500,
+      keywords: ['ddr4', 'ддр4', 'ddr 4', 'ддр 4', 'kingston', 'fury', '32gb', '3200mhz', '3600mhz', 'оперативка']
+    },
+    {
+      title: 'DDR4 16GB (2x8GB) 3200MHz Kingston Fury Beast',
+      query: 'DDR4 16GB 3200MHz Kingston',
+      category: 'tech',
+      badge: '⚡ ОЗУ • DDR4 16GB',
+      meta: 'Классический комплект 2x8GB для быстрых народных сборок',
+      minPrice: 2500,
+      keywords: ['ddr4', 'ддр4', '16gb', '3200mhz', 'память']
+    },
+    {
+      title: 'DDR4 SODIMM 16GB / 32GB для ноутбука',
+      query: 'DDR4 SODIMM 3200MHz',
+      category: 'tech',
+      badge: '⚡ ОЗУ • Ноутбук DDR4',
+      meta: 'Память SO-DIMM DDR4 3200MHz для модернизации рабочих ноутбуков',
+      minPrice: 2500,
+      keywords: ['ddr4', 'ддр4', 'sodimm', 'содимм', 'ноутбук']
+    },
+
+    // --- КОМПЬЮТЕРЫ: ПРОЦЕССОРЫ (CPU) ---
+    {
+      title: 'AMD Ryzen 7 7800X3D (AM5)',
+      query: 'Ryzen 7 7800X3D',
+      category: 'tech',
+      badge: '⚡ CPU • Ryzen 7 7800X3D',
+      meta: 'Лучший игровой процессор в мире • 8 ядер / 16 потоков • 96MB 3D V-Cache • AM5',
+      minPrice: 29000,
+      keywords: ['процессор', 'проц', 'ryzen', '7800x3d', 'райзен', 'am5', 'amd']
+    },
+    {
+      title: 'AMD Ryzen 5 7500F / 7600 (AM5)',
+      query: 'Ryzen 5 7500F',
+      category: 'tech',
+      badge: '⚡ CPU • Ryzen 5 7500F',
+      meta: 'Хит продаж под DDR5 • 6 ядер Zen 4 • Идеален для видеокарт уровня RTX 4070',
+      minPrice: 11000,
+      keywords: ['процессор', 'проц', 'ryzen', '7500f', '7600', 'райзен', 'am5']
+    },
+    {
+      title: 'AMD Ryzen 5 5600 / 5600X (AM4)',
+      query: 'Ryzen 5 5600',
+      category: 'tech',
+      badge: '⚡ CPU • Ryzen 5 5600',
+      meta: 'Легендарный народный процессор под сокет AM4 • 6 ядер / 12 потоков',
+      minPrice: 8000,
+      keywords: ['процессор', 'проц', 'ryzen', '5600', '5600x', 'am4', 'райзен']
+    },
+    {
+      title: 'AMD Ryzen 7 5700X3D (AM4)',
+      query: 'Ryzen 7 5700X3D',
+      category: 'tech',
+      badge: '⚡ CPU • Ryzen 7 5700X3D',
+      meta: 'Финальный апгрейд платформы AM4 с кэшем 3D V-Cache для тяжелых игр',
+      minPrice: 16000,
+      keywords: ['процессор', 'ryzen', '5700x3d', 'am4', 'райзен']
+    },
+    {
+      title: 'Intel Core i5 13400F / 14400F (LGA1700)',
+      query: 'Core i5 13400F',
+      category: 'tech',
+      badge: '⚡ CPU • Core i5 13400F',
+      meta: '10 ядер (6P + 4E) • До 4.6 ГГц • Поддержка DDR4 и DDR5 памяти',
+      minPrice: 14000,
+      keywords: ['процессор', 'intel', 'i5', '13400f', '14400f', 'интел', 'lga1700']
+    },
+    {
+      title: 'Intel Core i5 12400F (LGA1700)',
+      query: 'Core i5 12400F',
+      category: 'tech',
+      badge: '⚡ CPU • Core i5 12400F',
+      meta: '6 производительных ядер • Народный процессор под видеокарты RTX 4060',
+      minPrice: 9000,
+      keywords: ['процессор', 'intel', 'i5', '12400f', 'lga1700', 'интел']
+    },
+    {
+      title: 'Intel Core i5 13600KF / 14600KF (LGA1700)',
+      query: 'Core i5 13600KF',
+      category: 'tech',
+      badge: '⚡ CPU • Core i5 13600KF',
+      meta: '14 ядер • Разблокированный множитель • Частота до 5.1 ГГц',
+      minPrice: 23000,
+      keywords: ['процессор', 'intel', 'i5', '13600kf', '14600kf']
+    },
+    {
+      title: 'Intel Core i7 13700KF / 14700KF (LGA1700)',
+      query: 'Core i7 13700KF',
+      category: 'tech',
+      badge: '⚡ CPU • Core i7 13700KF',
+      meta: '16 ядер / 24 потока • Мощная производительность для монтажа и 4K игр',
+      minPrice: 32000,
+      keywords: ['процессор', 'intel', 'i7', '13700kf', '14700kf']
+    },
+
+    // --- КОМПЬЮТЕРЫ: МАТЕРИНСКИЕ ПЛАТЫ И SSD ---
+    {
+      title: 'Материнская плата B650 AM5 (MSI, ASUS, Gigabyte)',
+      query: 'Материнская плата B650',
+      category: 'tech',
+      badge: '⚡ Плата • AM5 B650',
+      meta: 'Поддержка процессоров Ryzen 7000/8000/9000 • Слоты DDR5, PCIe 4.0/5.0 M.2',
+      minPrice: 12000,
+      keywords: ['материнская плата', 'материнка', 'мать', 'b650', 'am5', 'msi', 'asus', 'gigabyte']
+    },
+    {
+      title: 'Материнская плата B760 LGA1700 DDR5 / DDR4',
+      query: 'Материнская плата B760',
+      category: 'tech',
+      badge: '⚡ Плата • LGA1700 B760',
+      meta: 'Поддержка процессоров Intel Core 12, 13 и 14 поколения • Мощный VRM питания',
+      minPrice: 10000,
+      keywords: ['материнская плата', 'материнка', 'b760', 'lga1700', 'ddr5', 'ddr4']
+    },
+    {
+      title: 'Материнская плата Z790 LGA1700 DDR5',
+      query: 'Материнская плата Z790',
+      category: 'tech',
+      badge: '⚡ Плата • Z790 DDR5',
+      meta: 'Топовый чипсет для разгона процессора и оперативной памяти DDR5 7000+ MHz',
+      minPrice: 18000,
+      keywords: ['материнская плата', 'z790', 'lga1700', 'ddr5']
+    },
+    {
+      title: 'SSD M.2 NVMe 1TB Samsung 980 Pro / 990 Pro',
+      query: 'Samsung 980 Pro 1TB',
+      category: 'tech',
+      badge: '⚡ SSD • Samsung 980 Pro',
+      meta: 'Скорость чтения до 7000-7450 МБ/с • Буфер DRAM • Высокий ресурс TBW',
+      minPrice: 7500,
+      keywords: ['ssd', 'ссд', 'm.2', 'nvme', 'samsung', '980 pro', '990 pro', '1tb']
+    },
+    {
+      title: 'SSD M.2 NVMe 2TB Samsung 990 Pro / Kingston KC3000',
+      query: 'SSD 2TB M.2 NVMe',
+      category: 'tech',
+      badge: '⚡ SSD • 2TB NVMe',
+      meta: 'Огромный объем 2000GB под библиотеку современных игр и быстрый запуск системы',
+      minPrice: 14000,
+      keywords: ['ssd', 'ссд', '2tb', 'm.2', 'nvme', '990 pro', 'kc3000']
+    },
+    {
+      title: 'SSD M.2 NVMe 1TB Kingston KC3000',
+      query: 'Kingston KC3000 1TB',
+      category: 'tech',
+      badge: '⚡ SSD • Kingston KC3000',
+      meta: 'Скорость 7000 МБ/с • Контроллер Phison E18 • Графеновый радиатор',
+      minPrice: 7000,
+      keywords: ['ssd', 'ссд', 'kingston', 'kc3000', '1tb', 'm.2']
+    },
+
+    // --- МОНИТОРЫ ---
+    {
+      title: 'Монитор 27" 2K 144Hz / 165Hz / 180Hz IPS',
+      query: 'Монитор 27 2K 165Hz',
+      category: 'tech',
+      badge: '🖥 Монитор • 27" 2K 165Hz',
+      meta: 'Разрешение 2560x1440 • Быстрая IPS матрица 1мс • G-Sync / FreeSync',
+      minPrice: 15000,
+      keywords: ['монитор', '27', '2k', '144hz', '165hz', '180hz', 'ips', 'гейминг']
+    },
+    {
+      title: 'OLED монитор 27" 240Hz 2K (LG, ASUS, AOC)',
+      query: 'OLED монитор 27 240Hz',
+      category: 'tech',
+      badge: '🖥 Монитор • 27" OLED 240Hz',
+      meta: 'Идеальный черный цвет • Отклик 0.03 мс • Плавность 240Hz для киберспорта',
+      minPrice: 60000,
+      keywords: ['монитор', 'oled', 'олед', '240hz', '27']
+    },
+
+    // --- СМАРТФОНЫ И ГАДЖЕТЫ ---
+    {
+      title: 'iPhone 16 Pro Max 256GB / 512GB',
+      query: 'iPhone 16 Pro Max 256GB',
+      category: 'tech',
+      badge: '📱 Apple • 16 Pro Max',
+      meta: 'Экран 6.9 дюймов • Кнопка Camera Control • Чип A18 Pro • Титановый корпус',
+      minPrice: 95000,
+      keywords: ['айфон', 'iphone', '16 pro max', '16 про макс', 'apple']
+    },
+    {
+      title: 'iPhone 16 Pro 128GB / 256GB',
+      query: 'iPhone 16 Pro',
+      category: 'tech',
+      badge: '📱 Apple • 16 Pro',
+      meta: 'Экран 6.3" ProMotion 120Hz • Камера 5x перископ • Автономность',
+      minPrice: 85000,
+      keywords: ['айфон', 'iphone', '16 pro', '16 про', 'apple']
+    },
+    {
+      title: 'iPhone 16 128GB / 256GB',
+      query: 'iPhone 16 128GB',
+      category: 'tech',
+      badge: '📱 Apple • iPhone 16',
+      meta: 'Новая вертикальная камера для пространственного видео • Чип A18 • Action Button',
+      minPrice: 65000,
+      keywords: ['айфон', 'iphone', '16', 'apple']
+    },
+    {
+      title: 'iPhone 14 Pro Max 128GB / 256GB',
+      query: 'iPhone 14 Pro Max',
+      category: 'tech',
+      badge: '📱 Apple • 14 Pro Max',
+      meta: 'Dynamic Island • Камера 48 Мп • Всегда включенный экран Always-On',
+      minPrice: 62000,
+      keywords: ['айфон', 'iphone', '14 pro max', '14 про макс', 'apple']
+    },
+    {
+      title: 'iPhone 13 128GB',
+      query: 'iPhone 13 128GB',
+      category: 'tech',
+      badge: '📱 Apple • iPhone 13',
+      meta: 'Хит продаж • Яркий OLED Super Retina • Двойная диагональная камера',
+      minPrice: 35000,
+      keywords: ['айфон', 'iphone', '13', 'apple']
+    },
+    {
+      title: 'Apple AirPods Pro 2 (Type-C / MagSafe)',
+      query: 'AirPods Pro 2 Type-C',
+      category: 'tech',
+      badge: '🎧 Apple • AirPods Pro 2',
+      meta: 'Активное шумоподавление нового поколения 2x • Разъем USB Type-C',
+      minPrice: 14000,
+      keywords: ['аирподс', 'airpods', 'airpods pro 2', 'про 2', 'наушники', 'apple']
+    },
+    {
+      title: 'Apple AirPods Max',
+      query: 'AirPods Max',
+      category: 'tech',
+      badge: '🎧 Apple • AirPods Max',
+      meta: 'Полноразмерные беспроводные наушники • Алюминиевые чашки, премиум звук',
+      minPrice: 35000,
+      keywords: ['аирподс макс', 'airpods max', 'макс', 'apple', 'наушники']
+    },
+    {
+      title: 'Apple Watch Ultra 2 (49mm)',
+      query: 'Apple Watch Ultra 2',
+      category: 'tech',
+      badge: '⌚️ Apple • Watch Ultra 2',
+      meta: 'Титановый корпус 49мм • Сапфировое стекло 3000 нит • Двухчастотный GPS',
+      minPrice: 55000,
+      keywords: ['эппл вотч', 'apple watch', 'ultra 2', 'ультра 2', 'часы']
+    },
+    {
+      title: 'MacBook Air 13 M2 8/256GB / 16/512GB',
+      query: 'MacBook Air M2',
+      category: 'tech',
+      badge: '💻 Apple • MacBook Air M2',
+      meta: 'Экран Liquid Retina 13.6" • Тонкий алюминиевый корпус • До 18 часов работы',
+      minPrice: 65000,
+      keywords: ['макбук', 'macbook', 'air m2', 'эир м2', 'apple', 'ноутбук']
+    },
+    {
+      title: 'Nintendo Switch OLED 64GB',
+      query: 'Nintendo Switch OLED',
+      category: 'tech',
+      badge: '🎮 Консоль • Switch OLED',
+      meta: 'Красочный 7-дюймовый OLED дисплей • Широкая опора • LAN-порт в док-станции',
+      minPrice: 22000,
+      keywords: ['нинтендо', 'свитч', 'сыч', 'nintendo', 'switch oled', 'консоль']
+    },
+    {
+      title: 'ASUS ROG Ally Z1 Extreme',
+      query: 'ASUS ROG Ally Z1 Extreme',
+      category: 'tech',
+      badge: '🎮 Портатив • ROG Ally',
+      meta: 'Процессор AMD Z1 Extreme • Экран Full HD 120Hz с VRR • Windows 11',
+      minPrice: 45000,
+      keywords: ['asus', 'rog ally', 'рог элай', 'z1 extreme', 'портатив']
+    },
+
+    // --- БЫТОВАЯ ТЕХНИКА И ИНСТРУМЕНТЫ ---
+    {
+      title: 'Робот-пылесос Roborock S8 / Q Revo',
+      query: 'Roborock S8',
+      category: 'tech',
+      badge: '🤖 Уборка • Roborock',
+      meta: 'Двойная турбощетка DuoRoller • Сила всасывания 6000 Па • Лидар навигация',
+      minPrice: 30000,
+      keywords: ['робот пылесос', 'роборок', 'roborock', 's8', 'q revo', 'пылесос']
+    },
+    {
+      title: 'Кофемашина DeLonghi Magnifica S / Evo',
+      query: 'DeLonghi Magnifica',
+      category: 'tech',
+      badge: '☕️ Кофемашина • DeLonghi',
+      meta: 'Автоматическое приготовление эспрессо и капучино • Встроенная кофемолка',
+      minPrice: 22000,
+      keywords: ['делонги', 'delonghi', 'magnifica', 'магнифика', 'кофемашина']
+    },
+    {
+      title: 'Перфоратор Makita HR2470 / HR2630 SDS-Plus',
+      query: 'Перфоратор Makita HR2470',
+      category: 'tech',
+      badge: '🛠 Инструмент • Makita',
+      meta: '780 Вт • Энергия удара 2.7 Дж • 3 режима работы • Надежная муфта',
+      minPrice: 6000,
+      keywords: ['макита', 'makita', 'перфоратор', 'hr2470', 'инструмент']
+    },
+
+    // --- АВТО: КОЛЕСА И ШИНЫ ---
+    {
+      title: 'Колеса в сборе R17 / R18 / R19 (диски + шины)',
+      query: 'Колеса в сборе R18',
+      category: 'auto',
+      badge: '🛞 Колеса • В сборе',
+      meta: 'Оригинальные легкосплавные диски с сезонной резиной в отличном состоянии',
+      minPrice: 20000,
+      keywords: ['колеса', 'в сборе', 'r17', 'r18', 'r19', 'диски', 'резина']
+    },
+    {
+      title: 'Литые диски R17 / R18 (5x112, 5x114.3, 5x108)',
+      query: 'Литые диски R18',
+      category: 'auto',
+      badge: '🛞 Колеса • Литые диски',
+      meta: 'Без варок и трещин • Ровная геометрия • Проверка на балансировочном станке',
+      minPrice: 18000,
+      keywords: ['диски', 'литые', 'r17', 'r18', '5x112', '5x114.3', 'литье']
+    },
+    {
+      title: 'Зимняя резина шипованная / липучка R16 / R17 / R18',
+      query: 'Зимняя резина R17',
+      category: 'auto',
+      badge: '🛞 Шины • Зимние',
+      meta: 'Nokian, Michelin, Continental, Pirelli • Все шипы на месте, остаток 80%+',
+      minPrice: 12000,
+      keywords: ['резина', 'шины', 'зимняя', 'зима', 'липучка', 'шипы', 'r16', 'r17', 'r18']
     }
   ];
 
@@ -1016,6 +1483,89 @@
     }
 
     scored.sort((a, b) => b.score - a.score);
+
+    // =========================================================================
+    // DYNAMIC CONTINUATION ENGINE ("Самый оптимизированный выход")
+    // If fewer than limit items found, generate contextual Avito intent continuations
+    // =========================================================================
+    if (scored.length < limit) {
+      const existingQueries = new Set(scored.map(s => s.item.query.toLowerCase()));
+      const rawTrimmed = inputQuery.trim();
+      const lowerTrimmed = rawTrimmed.toLowerCase();
+
+      const isDdr = /ddr|ддр/i.test(lowerTrimmed);
+      const isGpu = /rtx|ртх|rx|gtx|видюх|видеокарт/i.test(lowerTrimmed);
+      const isCpu = /ryzen|райзен|core|intel|интел|проц/i.test(lowerTrimmed);
+      const isApple = /айфон|iphone|apple|эппл|ipad|айпад|macbook|макбук/i.test(lowerTrimmed);
+      const isAuto = /бмв|bmw|мерс|mercedes|лада|lada|веста|vesta|тойота|toyota|камри|camry|ауди|audi|киа|kia|хендай|hyundai|фолькс|vw|колес|диск|резин|шин/i.test(lowerTrimmed);
+      const isTech = isDdr || isGpu || isCpu || isApple || /samsung|самсунг|ps5|пс5|xbox|steam|ssd|ссд|монитор/i.test(lowerTrimmed);
+
+      let continuations = [];
+      if (isDdr) {
+        continuations = [
+          { suffix: '32GB 6000MHz', meta: 'Оптимальный комплект памяти CL30/CL36 для игр', minPrice: 7000 },
+          { suffix: '64GB (2x32GB)', meta: 'Двухканальный комплект для тяжелых задач и рендера', minPrice: 15000 },
+          { suffix: 'Kingston Fury Beast 32GB', meta: 'Проверенная память с алюминиевыми радиаторами', minPrice: 7500 },
+          { suffix: 'G.Skill Trident Z5 RGB 32GB', meta: 'Топовые чипы Hynix с синхронизацией RGB', minPrice: 9500 },
+          { suffix: 'SODIMM для ноутбука', meta: 'Компактные планки SO-DIMM для игровых лэптопов', minPrice: 3500 },
+          { suffix: 'комплект с AM5 B650', meta: 'Готовая связка: процессор + материнская плата + ОЗУ', minPrice: 25000 }
+        ];
+      } else if (isGpu) {
+        continuations = [
+          { suffix: 'новый на пломбах', meta: 'Запечатанная коробка с чеком и гарантией', minPrice: 35000 },
+          { suffix: 'в идеальном состоянии', meta: 'Любые тесты FurMark / Superposition, без майнинга', minPrice: 25000 },
+          { suffix: '12GB / 16GB GDDR6X', meta: 'Запас видеопамяти под современные 2K/4K игры', minPrice: 45000 },
+          { suffix: 'с гарантией DNS / Ситилинк', meta: 'Официальный чек и остаток гарантии в РФ', minPrice: 30000 }
+        ];
+      } else if (isCpu) {
+        continuations = [
+          { suffix: 'BOX с кулером', meta: 'Коробочная версия с оригинальным кулером', minPrice: 12000 },
+          { suffix: 'новый запечатанный', meta: 'Заводские пломбы, ножки целые', minPrice: 10000 },
+          { suffix: 'комплект с платой и памятью', meta: 'Проверенная готовая основа для ПК', minPrice: 20000 }
+        ];
+      } else if (isApple) {
+        continuations = [
+          { suffix: '128GB оригинал', meta: 'Отличное состояние, Face ID и True Tone работают', minPrice: 40000 },
+          { suffix: '256GB полный комплект', meta: 'Коробка, провод, аккумулятор 88%+', minPrice: 50000 },
+          { suffix: 'новый не активирован', meta: 'Запечатан, официальная гарантия Apple 1 год', minPrice: 65000 }
+        ];
+      } else if (isAuto) {
+        continuations = [
+          { suffix: 'в максимальной комплектации', meta: 'Кожаный салон, панорама, максимальный пакет опций', minPrice: 1200000 },
+          { suffix: '1 владелец без ДТП', meta: 'Зеленая автотека, родной заводской окрас', minPrice: 950000 },
+          { suffix: 'с пробегом до 60 000 км', meta: 'Честный подтвержденный пробег, обслуживание у дилера', minPrice: 1100000 },
+          { suffix: 'автомат / вариатор', meta: 'Классическая автоматическая трансмиссия', minPrice: 850000 }
+        ];
+      } else {
+        continuations = [
+          { suffix: 'новый с доставкой', meta: 'Быстрая отправка через безопасную Авито Доставку', minPrice: 1000 },
+          { suffix: 'в идеальном состоянии', meta: 'Бережная эксплуатация, без следов использования', minPrice: 2000 },
+          { suffix: 'оригинал с чеком', meta: 'Оригинальный товар с подтверждающими документами', minPrice: 1500 },
+          { suffix: 'срочно ниже рынка', meta: 'Выгодное предложение по сниженной цене', minPrice: 1000 }
+        ];
+      }
+
+      for (const c of continuations) {
+        const fullTitle = `${rawTrimmed} ${c.suffix}`;
+        if (!existingQueries.has(fullTitle.toLowerCase())) {
+          scored.push({
+            item: {
+              title: fullTitle,
+              query: fullTitle,
+              category: isTech ? 'tech' : (isAuto ? 'auto' : 'goods'),
+              badge: isDdr ? '⚡ DDR' : (isGpu ? '⚡ GPU' : (isTech ? '⚡ Электроника' : (isAuto ? '🚗 Авто' : '🔍 Каталог'))),
+              meta: c.meta,
+              minPrice: c.minPrice || 0,
+              keywords: [rawTrimmed.toLowerCase()]
+            },
+            score: 50
+          });
+          existingQueries.add(fullTitle.toLowerCase());
+          if (scored.length >= limit) break;
+        }
+      }
+    }
+
     return scored.slice(0, limit).map(s => s.item);
   }
 

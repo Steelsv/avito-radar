@@ -576,9 +576,86 @@ function initDOM() {
     statTopDiscount: document.getElementById('statTopDiscount'),
     statActiveRadars: document.getElementById('statActiveRadars'),
     querySuggestionsDropdown: document.getElementById('querySuggestionsDropdown'),
-    filterSuggestionsDropdown: document.getElementById('filterSuggestionsDropdown')
+    filterSuggestionsDropdown: document.getElementById('filterSuggestionsDropdown'),
+    scanProgressModal: document.getElementById('scanProgressModal'),
+    scanModalTitle: document.getElementById('scanModalTitle'),
+    scanModalSub: document.getElementById('scanModalSub'),
+    scanProgressBar: document.getElementById('scanProgressBar'),
+    scanStatusStepText: document.getElementById('scanStatusStepText'),
+    scanStatusPercent: document.getElementById('scanStatusPercent')
   };
 }
+
+// ==========================================================================
+// Scan Progress Controller (Live 60fps Search Progress Bar)
+// ==========================================================================
+const ScanProgress = {
+  timer: null,
+  percent: 15,
+
+  start(query, city) {
+    if (!DOM.scanProgressModal) initDOM();
+    if (!DOM.scanProgressModal) return;
+
+    if (this.timer) clearInterval(this.timer);
+    this.percent = 15;
+
+    const cityAbbr = getCityAbbr(city);
+    const cityLabel = (city && city.toLowerCase() === 'rossiya') ? 'Вся Россия' : `[${cityAbbr}]`;
+
+    if (DOM.scanModalTitle) DOM.scanModalTitle.textContent = `Сканирование «${query}»`;
+    if (DOM.scanModalSub) DOM.scanModalSub.textContent = `Регион: ${cityLabel} • Мониторинг Авито 24/7`;
+
+    this.setProgress(15, '📡 Подключение к радару Avito...', 1);
+    DOM.scanProgressModal.classList.remove('hidden');
+
+    this.timer = setInterval(() => {
+      if (this.percent < 45) {
+        this.percent += 8;
+        this.setProgress(this.percent, `🔎 Поиск предложений «${query}» на Авито...`, 2);
+      } else if (this.percent < 75) {
+        this.percent += 6;
+        this.setProgress(this.percent, '⚡ Парсинг свежих лотов, цен и фото...', 2);
+      } else if (this.percent < 90) {
+        this.percent += 3;
+        this.setProgress(this.percent, '📊 Анализ рыночной цены и подсчет выгоды...', 3);
+      }
+    }, 450);
+  },
+
+  setProgress(pct, text, activeStep) {
+    if (DOM.scanProgressBar) DOM.scanProgressBar.style.width = `${Math.min(100, pct)}%`;
+    if (DOM.scanStatusPercent) DOM.scanStatusPercent.textContent = `${Math.min(100, Math.round(pct))}%`;
+    if (DOM.scanStatusStepText && text) DOM.scanStatusStepText.textContent = text;
+
+    for (let i = 1; i <= 4; i++) {
+      const pill = document.getElementById(`scanPill${i}`);
+      if (!pill) continue;
+      if (i < activeStep) {
+        pill.className = 'scan-pill done';
+      } else if (i === activeStep) {
+        pill.className = 'scan-pill active';
+      } else {
+        pill.className = 'scan-pill';
+      }
+    }
+  },
+
+  finish(count) {
+    if (this.timer) clearInterval(this.timer);
+    if (!DOM.scanProgressModal) return;
+
+    if (count > 0) {
+      this.setProgress(100, `✅ Найдено ${count} объявлений! Готово`, 4);
+    } else {
+      this.setProgress(100, '⚠️ Поиск завершен. Объявлений пока нет', 4);
+    }
+
+    setTimeout(() => {
+      DOM.scanProgressModal?.classList.add('hidden');
+    }, 600);
+  }
+};
 
 // ==========================================================================
 // 7. Core Controllers & View Switchers
@@ -678,10 +755,65 @@ async function handleConfirmDelete() {
 
 async function scanSearch(id) {
   TelegramService.haptic('medium');
-  showToast('Сканирование Авито...', 'info');
-  await ApiService.triggerScan(id);
-  await loadData();
-  showToast('Каталог обновлен!', 'success');
+  const s = State.searches.find(x => x.id === id);
+  const title = s ? s.query : id;
+  const city = s ? s.city : 'Челябинск';
+  ScanProgress.start(title, city);
+
+  try {
+    await ApiService.triggerScan(id);
+    await loadData();
+    const lotsCount = State.lots.filter(l => l.searchId === id && !l.isDismissed).length;
+    ScanProgress.finish(lotsCount);
+    TelegramService.haptic(lotsCount > 0 ? 'success' : 'medium');
+    renderView();
+    if (lotsCount > 0) {
+      showToast(`Найдено ${lotsCount} лотов!`, 'success');
+    } else {
+      showToast('Новых лотов пока нет', 'info');
+    }
+  } catch (err) {
+    ScanProgress.finish(0);
+    showToast('Ошибка при сканировании', 'error');
+  }
+}
+
+async function expandSearchToRussia(searchId) {
+  TelegramService.haptic('medium');
+  const s = State.searches.find(x => x.id === searchId);
+  if (!s) return;
+  showToast(`Расширяем поиск «${s.query}» на всю Россию...`, 'info');
+  await ApiService.deleteSearch(searchId);
+  const newS = await ApiService.createSearch({
+    query: s.query,
+    city: 'rossiya',
+    minPrice: s.minPrice || 0
+  });
+  State.searches = State.searches.filter(x => x.id !== newS.id);
+  State.searches.unshift(newS);
+  State.currentSearchId = newS.id;
+  populateSearchSelector();
+  updateDeleteCurrentButtonVisibility();
+  await scanSearch(newS.id);
+}
+
+async function resetMinPrice(searchId) {
+  TelegramService.haptic('medium');
+  const s = State.searches.find(x => x.id === searchId);
+  if (!s) return;
+  showToast(`Сбрасываем минимальную цену для «${s.query}»...`, 'info');
+  await ApiService.deleteSearch(searchId);
+  const newS = await ApiService.createSearch({
+    query: s.query,
+    city: s.city || 'rossiya',
+    minPrice: 0
+  });
+  State.searches = State.searches.filter(x => x.id !== newS.id);
+  State.searches.unshift(newS);
+  State.currentSearchId = newS.id;
+  populateSearchSelector();
+  updateDeleteCurrentButtonVisibility();
+  await scanSearch(newS.id);
 }
 
 function openNewSearchModal() {
@@ -1150,25 +1282,44 @@ function renderEmptyState() {
   if (State.currentSearchId && State.currentSearchId !== 'all') {
     const curr = State.searches.find(s => s.id === State.currentSearchId);
     const title = curr ? formatSearchDisplay(curr) : State.currentSearchId;
+    const isRossiya = curr && (curr.city === 'Вся Россия' || curr.city === 'rossiya');
+    const hasMinPrice = curr && curr.minPrice > 0;
+
     DOM.emptyState.innerHTML = `
-      <div class="radar-logo" style="width: 48px; height: 48px; margin: 0 auto 14px; border-radius: 14px;">
-        <div class="radar-beam"></div>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
-        </svg>
+      <div style="text-align: center; padding: 28px 18px; background: var(--surface-card); border-radius: 20px; border: 1px solid var(--border-subtle); max-width: 440px; margin: 12px auto;">
+        <div class="radar-logo" style="width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 16px;">
+          <div class="radar-beam"></div>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+          </svg>
+        </div>
+        <div class="h3" style="font-size: 17px; margin-bottom: 6px;">Объявлений пока не найдено</div>
+        <p class="caption" style="margin-bottom: 16px; line-height: 1.5; color: var(--text-secondary);">
+          По запросу «<b style="color: var(--text-primary);">${escapeHtml(curr?.query || title)}</b>» в регионе <b>${escapeHtml(curr?.city || 'Вся Россия')}</b> пока нет лотов.
+          ${hasMinPrice ? `<br><span style="color: #F59E0B; display: inline-block; margin-top: 4px;">⚠️ Установлен фильтр цены: от ${curr.minPrice.toLocaleString('ru-RU')} ₽.</span>` : ''}
+          <br>Радар работает 24/7 и пришлет уведомление при появлении свежих объявлений.
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <button class="btn-cta" onclick="window.app.scanSearch('${State.currentSearchId}')" style="height: 42px; font-size: 13px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            Просканировать Авито сейчас
+          </button>
+          ${!isRossiya ? `
+            <button class="filter-chip" onclick="window.app.expandSearchToRussia('${State.currentSearchId}')" style="height: 38px; justify-content: center; font-size: 12px; border-color: rgba(99, 102, 241, 0.4); color: #A5B4FC;">
+              🌐 Искать по всей России
+            </button>
+          ` : ''}
+          ${hasMinPrice ? `
+            <button class="filter-chip" onclick="window.app.resetMinPrice('${State.currentSearchId}')" style="height: 38px; justify-content: center; font-size: 12px; border-color: rgba(245, 158, 11, 0.4); color: #FCD34D;">
+              ❌ Сбросить минимальную цену (${curr.minPrice.toLocaleString('ru-RU')} ₽)
+            </button>
+          ` : ''}
+        </div>
       </div>
-      <div class="h3" style="margin-bottom: 6px;">Радар «${escapeHtml(title)}» сканирует Авито</div>
-      <p class="caption" style="margin-bottom: 18px; max-width: 320px; margin-inline: auto; line-height: 1.5;">
-        Радар отслеживает свежие предложения 24/7. Как только появятся объявления, они сразу отобразятся здесь.
-      </p>
-      <button class="btn-cta" onclick="window.app.scanSearch('${State.currentSearchId}')" style="max-width: 240px; margin: 0 auto; height: 38px; font-size: 13px;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
-          <polyline points="23 4 23 10 17 10"></polyline>
-          <polyline points="1 20 1 14 7 14"></polyline>
-          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-        </svg>
-        Просканировать сейчас
-      </button>
     `;
     return;
   }
@@ -1466,39 +1617,51 @@ async function handleNewSearchSubmit(e) {
 
   TelegramService.haptic('success');
   closeAllModals();
-  showToast(`Запуск радара для «${q}»...`, 'info');
 
-  const newSearch = await ApiService.createSearch({
-    query: q,
-    city: city,
-    minPrice: minP ? Number(minP) : 0,
-    filters: { noDefects: true }
-  });
+  ScanProgress.start(q, city);
 
-  State.searches = State.searches.filter(s => s.id !== newSearch.id);
-  State.searches.unshift(newSearch);
-  State.currentSearchId = newSearch.id;
+  try {
+    const newSearch = await ApiService.createSearch({
+      query: q,
+      city: city,
+      minPrice: minP ? Number(minP) : 0,
+      filters: { noDefects: true }
+    });
 
-  populateSearchSelector();
-  updateDeleteCurrentButtonVisibility();
-  await loadData();
-  setViewMode('cards');
-  showToast(`Радар [${getCityAbbr(city)}] ${q} запущен! Ищем предложения...`, 'info');
+    State.searches = State.searches.filter(s => s.id !== newSearch.id);
+    State.searches.unshift(newSearch);
+    State.currentSearchId = newSearch.id;
 
-  // Active polling to fetch lots as soon as Avito scan finishes
-  let pollCount = 0;
-  const pollTimer = setInterval(async () => {
-    pollCount++;
+    populateSearchSelector();
+    updateDeleteCurrentButtonVisibility();
+
+    // Trigger immediate scan and load data
+    await ApiService.triggerScan(newSearch.id);
     await loadData();
-    const lotsCount = State.lots.filter(l => l.searchId === newSearch.id && !l.isDismissed).length;
-    if (lotsCount > 0) {
-      clearInterval(pollTimer);
-      showToast(`Найдено ${lotsCount} лотов по [${getCityAbbr(city)}] ${q}!`, 'success');
-      TelegramService.haptic('success');
-    } else if (pollCount >= 6) {
-      clearInterval(pollTimer);
+
+    let lotsCount = State.lots.filter(l => l.searchId === newSearch.id && !l.isDismissed).length;
+
+    if (lotsCount === 0) {
+      // Check 1 more time after 2s in case background crawler was processing
+      await new Promise(r => setTimeout(r, 2000));
+      await loadData();
+      lotsCount = State.lots.filter(l => l.searchId === newSearch.id && !l.isDismissed).length;
     }
-  }, 3000);
+
+    ScanProgress.finish(lotsCount);
+    TelegramService.haptic(lotsCount > 0 ? 'success' : 'medium');
+    setViewMode('cards');
+
+    if (lotsCount > 0) {
+      showToast(`Найдено ${lotsCount} лотов по «${q}»!`, 'success');
+    } else {
+      showToast(`Радар [${getCityAbbr(city)}] запущен!`, 'info');
+    }
+  } catch (err) {
+    console.error('Search creation/scan failed:', err);
+    ScanProgress.finish(0);
+    showToast('Ошибка при запуске радара', 'error');
+  }
 }
 
 function showToast(message, type = 'info') {
@@ -1643,6 +1806,8 @@ Object.assign(window.app, {
   confirmDelete: handleConfirmDelete,
   selectSearch,
   scanSearch,
+  expandSearchToRussia,
+  resetMinPrice,
   setQueryPreset,
   quickAddPreset,
   applyQueryFilter
