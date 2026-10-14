@@ -18,19 +18,27 @@ const SafeStorage = {
   getItem(key) {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(key);
+        const val = window.localStorage.getItem(key);
+        if (val !== null) return val;
       }
     } catch (_) {}
     return this._mem.get(key) || null;
   },
 
   setItem(key, val) {
+    const strVal = String(val);
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(key, val);
+        window.localStorage.setItem(key, strVal);
       }
     } catch (_) {}
-    this._mem.set(key, String(val));
+    this._mem.set(key, strVal);
+
+    try {
+      if (typeof window !== 'undefined' && window.Telegram?.WebApp?.CloudStorage) {
+        window.Telegram.WebApp.CloudStorage.setItem(key, strVal, () => {});
+      }
+    } catch (_) {}
   },
 
   removeItem(key) {
@@ -40,6 +48,32 @@ const SafeStorage = {
       }
     } catch (_) {}
     this._mem.delete(key);
+
+    try {
+      if (typeof window !== 'undefined' && window.Telegram?.WebApp?.CloudStorage) {
+        window.Telegram.WebApp.CloudStorage.removeItem(key, () => {});
+      }
+    } catch (_) {}
+  },
+
+  async initCloudSync() {
+    try {
+      if (typeof window !== 'undefined' && window.Telegram?.WebApp?.CloudStorage) {
+        return new Promise((resolve) => {
+          window.Telegram.WebApp.CloudStorage.getItems(['avitoradar_searches_cache', 'avitoradar_favorites'], (err, values) => {
+            if (!err && values) {
+              if (values.avitoradar_searches_cache && !window.localStorage?.getItem('avitoradar_searches_cache')) {
+                SafeStorage.setItem('avitoradar_searches_cache', values.avitoradar_searches_cache);
+              }
+              if (values.avitoradar_favorites && !window.localStorage?.getItem('avitoradar_favorites')) {
+                SafeStorage.setItem('avitoradar_favorites', values.avitoradar_favorites);
+              }
+            }
+            resolve();
+          });
+        });
+      }
+    } catch (_) {}
   }
 };
 
@@ -187,8 +221,34 @@ const ApiService = {
       if (res.ok) {
         const data = await res.json();
         if (data.searches && Array.isArray(data.searches)) {
-          SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(data.searches));
-          return data.searches;
+          if (data.searches.length > 0) {
+            SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(data.searches));
+            return data.searches;
+          }
+          // Server returned 0 searches: check if client has cached searches to restore
+          const cached = SafeStorage.getItem('avitoradar_searches_cache');
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                // Re-sync each search to server in background
+                parsed.forEach(s => {
+                  fetch(`${API_BASE_URL}/api/searches`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      query: s.query || s.title || s.id,
+                      city: s.city || 'chelyabinsk',
+                      min_price: s.minPrice || 0
+                    })
+                  }).catch(() => {});
+                });
+                return parsed;
+              }
+            } catch (_) {}
+          }
+          SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify([]));
+          return [];
         }
       }
     } catch (err) {
@@ -298,12 +358,29 @@ const ApiService = {
       if (res.ok) {
         const data = await res.json();
         if (data.lots && Array.isArray(data.lots)) {
-          const dismissedSet = this.getDismissedIds();
-          data.lots.forEach(l => {
-            if (dismissedSet.has(String(l.id))) l.isDismissed = true;
-          });
-          SafeStorage.setItem('avitoradar_lots_cache', JSON.stringify(data.lots));
-          return data.lots;
+          if (data.lots.length > 0) {
+            const dismissedSet = this.getDismissedIds();
+            data.lots.forEach(l => {
+              if (dismissedSet.has(String(l.id))) l.isDismissed = true;
+            });
+            SafeStorage.setItem('avitoradar_lots_cache', JSON.stringify(data.lots));
+            return data.lots;
+          }
+          // Server returned 0 lots (e.g. still scanning): keep cached lots
+          const cached = SafeStorage.getItem('avitoradar_lots_cache');
+          if (cached) {
+            try {
+              let lots = JSON.parse(cached);
+              if (Array.isArray(lots) && lots.length > 0) {
+                const dismissedSet = this.getDismissedIds();
+                lots.forEach(l => {
+                  if (dismissedSet.has(String(l.id))) l.isDismissed = true;
+                });
+                return lots;
+              }
+            } catch (_) {}
+          }
+          return [];
         }
       }
     } catch (err) {
@@ -1357,6 +1434,7 @@ Object.assign(window.app, {
 async function startApp() {
   initDOM();
   TelegramService.init();
+  await SafeStorage.initCloudSync();
   setupEventListeners();
   await loadData();
 }

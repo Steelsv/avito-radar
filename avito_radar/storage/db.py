@@ -101,11 +101,20 @@ def save_locations_cache(cache: dict[str, Any]) -> None:
     save_json(LOCATIONS_CACHE_PATH, cache)
 
 
+SEEDS_PATH = ROOT_DIR / "searches_seeds.json"
+
+
 def save_search(search: SearchRecord) -> None:
     ensure_dirs()
     search.folder.mkdir(parents=True, exist_ok=True)
     config_path = search.folder / "config.json"
     save_json(config_path, asdict(search))
+    try:
+        seeds = load_json(SEEDS_PATH)
+        seeds[search.name] = asdict(search)
+        save_json(SEEDS_PATH, seeds)
+    except Exception:
+        pass
 
 
 def load_search(name: str) -> SearchRecord | None:
@@ -118,6 +127,18 @@ def load_search(name: str) -> SearchRecord | None:
 
 def list_searches() -> list[SearchRecord]:
     ensure_dirs()
+    if SEEDS_PATH.exists():
+        try:
+            seeds = load_json(SEEDS_PATH)
+            for s_name, s_data in seeds.items():
+                target_folder = SEARCHES_DIR / s_name
+                cfg_path = target_folder / "config.json"
+                if not cfg_path.exists():
+                    target_folder.mkdir(parents=True, exist_ok=True)
+                    save_json(cfg_path, s_data)
+        except Exception:
+            pass
+
     results = []
     for p in sorted(SEARCHES_DIR.iterdir()):
         if p.is_dir():
@@ -130,10 +151,19 @@ def list_searches() -> list[SearchRecord]:
 def delete_search(name: str) -> bool:
     import shutil
     folder = SEARCHES_DIR / name
+    deleted = False
     if folder.exists():
         shutil.rmtree(folder, ignore_errors=True)
-        return True
-    return False
+        deleted = True
+    try:
+        seeds = load_json(SEEDS_PATH)
+        if name in seeds:
+            del seeds[name]
+            save_json(SEEDS_PATH, seeds)
+            deleted = True
+    except Exception:
+        pass
+    return deleted
 
 
 def load_listings(search: SearchRecord) -> dict[str, dict[str, Any]]:

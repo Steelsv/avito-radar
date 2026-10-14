@@ -805,6 +805,13 @@ def generate_api_bundle() -> dict[str, Any]:
     bundle: dict[str, Any] = {}
     for s in list_searches():
         raws = load_listings(s)
+        if not raws:
+            try:
+                cl = AvitoClient()
+                scan_search(s, client=cl, max_pages=1)
+                raws = load_listings(s)
+            except Exception as e:
+                logger.warning("Auto initial scan failed for %s: %s", s.name, e)
         items = [parse_catalog_item(r) for r in raws.values()]
         for it in items:
             classify_item(it, category_type=s.category_type, search_query=s.title)
