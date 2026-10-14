@@ -606,19 +606,19 @@ const ScanProgress = {
     if (DOM.scanModalTitle) DOM.scanModalTitle.textContent = `Сканирование «${query}»`;
     if (DOM.scanModalSub) DOM.scanModalSub.textContent = `Регион: ${cityLabel} • Мониторинг Авито 24/7`;
 
-    this.setProgress(15, '📡 Подключение к радару Avito...', 1);
+    this.setProgress(15, 'Подключение к каталогу Avito...', 1);
     DOM.scanProgressModal.classList.remove('hidden');
 
     this.timer = setInterval(() => {
       if (this.percent < 45) {
         this.percent += 8;
-        this.setProgress(this.percent, `🔎 Поиск предложений «${query}» на Авито...`, 2);
+        this.setProgress(this.percent, `Поиск лотов «${query}» на Авито...`, 2);
       } else if (this.percent < 75) {
         this.percent += 6;
-        this.setProgress(this.percent, '⚡ Парсинг свежих лотов, цен и фото...', 2);
+        this.setProgress(this.percent, 'Сбор объявлений, цен и фото...', 2);
       } else if (this.percent < 90) {
         this.percent += 3;
-        this.setProgress(this.percent, '📊 Анализ рыночной цены и подсчет выгоды...', 3);
+        this.setProgress(this.percent, 'Оценка рыночной стоимости...', 3);
       }
     }, 450);
   },
@@ -646,9 +646,9 @@ const ScanProgress = {
     if (!DOM.scanProgressModal) return;
 
     if (count > 0) {
-      this.setProgress(100, `✅ Найдено ${count} объявлений! Готово`, 4);
+      this.setProgress(100, `Найдено ${count} объявлений • Готово`, 4);
     } else {
-      this.setProgress(100, '⚠️ Поиск завершен. Объявлений пока нет', 4);
+      this.setProgress(100, 'Сканирование завершено • 0 объявлений', 4);
     }
 
     setTimeout(() => {
@@ -1216,32 +1216,32 @@ function renderEmptyState() {
 
   if (State.searches.length === 0) {
     DOM.emptyState.innerHTML = `
-      <div class="onboarding-card" style="text-align: center; padding: 28px 16px; background: var(--surface-card); border-radius: 20px; border: 1px solid var(--border-subtle); max-width: 480px; margin: 10px auto;">
-        <div class="radar-logo" style="width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 16px;">
-          <div class="radar-beam"></div>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+      <div class="onboarding-card" style="text-align: center; padding: 28px 16px; background: var(--surface-card); border-radius: 16px; border: 1px solid var(--border-subtle); max-width: 480px; margin: 10px auto;">
+        <div class="radar-logo" style="width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 12px;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 3v18M3 12h18"/>
             <circle cx="12" cy="12" r="3"/>
           </svg>
         </div>
-        <div class="h3" style="font-size: 18px; margin-bottom: 8px;">Добро пожаловать в Radar Terminal!</div>
+        <div class="h3" style="font-size: 17px; margin-bottom: 8px;">Терминал мониторинга Avito</div>
         <p class="caption" style="font-size: 13px; line-height: 1.5; margin-bottom: 20px; color: var(--text-secondary);">
-          Создайте свой первый радар для мониторинга выгодных предложений на Авито. Мы отслеживаем новинки 24/7 и присылаем лучшие цены.
+          Создайте свой первый радар для отслеживания выгодных предложений на Авито. Мы проверяем обновления 24/7 и присылаем лучшие цены.
         </p>
 
         <div style="margin-bottom: 20px;">
           <div style="font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 10px;">
-            Быстрый старт — популярные радары:
+            Популярные категории:
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
-            <button class="filter-chip" onclick="window.app.quickAddPreset('iPhone 15', 'chelyabinsk', 40000)" style="font-size: 12px; height: 34px;">📱 iPhone 15</button>
-            <button class="filter-chip" onclick="window.app.quickAddPreset('RTX 4070', 'chelyabinsk', 35000)" style="font-size: 12px; height: 34px;">💻 RTX 4070</button>
-            <button class="filter-chip" onclick="window.app.quickAddPreset('PlayStation 5', 'chelyabinsk', 25000)" style="font-size: 12px; height: 34px;">🎮 PS5</button>
-            <button class="filter-chip" onclick="window.app.quickAddPreset('RX 6700 XT', 'chelyabinsk', 20000)" style="font-size: 12px; height: 34px;">⚡ RX 6700 XT</button>
+            <button class="filter-chip" onclick="window.app.quickAddPreset('iPhone 15', 'chelyabinsk', 40000)" style="font-size: 12px; height: 34px;">iPhone 15</button>
+            <button class="filter-chip" onclick="window.app.quickAddPreset('RTX 4070', 'chelyabinsk', 35000)" style="font-size: 12px; height: 34px;">RTX 4070</button>
+            <button class="filter-chip" onclick="window.app.quickAddPreset('PlayStation 5', 'chelyabinsk', 25000)" style="font-size: 12px; height: 34px;">PS5</button>
+            <button class="filter-chip" onclick="window.app.quickAddPreset('DDR5 32GB', 'rossiya', 8000)" style="font-size: 12px; height: 34px;">DDR5 32GB</button>
           </div>
         </div>
 
-        <button class="btn-cta" onclick="window.app.openNewSearchModal()" style="max-width: 260px; margin: 0 auto; height: 42px; font-size: 14px;">
+        <button class="btn-cta" onclick="window.app.openNewSearchModal()" style="max-width: 260px; margin: 0 auto; height: 42px; font-size: 13px;">
           <span>+</span>
           <span>Настроить свой поиск</span>
         </button>
@@ -1258,7 +1258,7 @@ function renderEmptyState() {
       </svg>
       <div class="h3" style="margin-bottom: 6px;">Ничего не найдено</div>
       <p class="caption" style="margin-bottom: 16px;">По запросу «${escapeHtml(State.searchQuery)}» нет совпадений.</p>
-      <button class="filter-chip" onclick="document.getElementById('filterInput').value=''; window.app.applyQueryFilter('');" style="margin: 0 auto; border-color: var(--primary); color: #A5B4FC;">
+      <button class="filter-chip" onclick="document.getElementById('filterInput').value=''; window.app.applyQueryFilter('');" style="margin: 0 auto; border-color: var(--primary); color: var(--primary);">
         Очистить поиск
       </button>
     `;
@@ -1272,7 +1272,7 @@ function renderEmptyState() {
       </svg>
       <div class="h3" style="margin-bottom: 6px;">Нет лотов под этот фильтр</div>
       <p class="caption" style="margin-bottom: 16px;">Попробуйте выбрать другой фильтр или посмотреть все предложения.</p>
-      <button class="filter-chip" onclick="window.app.setFilterChip('all')" style="margin: 0 auto; border-color: var(--primary); color: #A5B4FC;">
+      <button class="filter-chip" onclick="window.app.setFilterChip('all')" style="margin: 0 auto; border-color: var(--primary); color: var(--primary);">
         Показать все лоты
       </button>
     `;
@@ -1286,17 +1286,16 @@ function renderEmptyState() {
     const hasMinPrice = curr && curr.minPrice > 0;
 
     DOM.emptyState.innerHTML = `
-      <div style="text-align: center; padding: 28px 18px; background: var(--surface-card); border-radius: 20px; border: 1px solid var(--border-subtle); max-width: 440px; margin: 12px auto;">
-        <div class="radar-logo" style="width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 16px;">
-          <div class="radar-beam"></div>
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <div style="text-align: center; padding: 28px 18px; background: var(--surface-card); border-radius: 16px; border: 1px solid var(--border-subtle); max-width: 440px; margin: 12px auto;">
+        <div class="radar-logo" style="width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 12px;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
           </svg>
         </div>
-        <div class="h3" style="font-size: 17px; margin-bottom: 6px;">Объявлений пока не найдено</div>
+        <div class="h3" style="font-size: 16px; margin-bottom: 6px;">Объявлений пока не найдено</div>
         <p class="caption" style="margin-bottom: 16px; line-height: 1.5; color: var(--text-secondary);">
           По запросу «<b style="color: var(--text-primary);">${escapeHtml(curr?.query || title)}</b>» в регионе <b>${escapeHtml(curr?.city || 'Вся Россия')}</b> пока нет лотов.
-          ${hasMinPrice ? `<br><span style="color: #F59E0B; display: inline-block; margin-top: 4px;">⚠️ Установлен фильтр цены: от ${curr.minPrice.toLocaleString('ru-RU')} ₽.</span>` : ''}
+          ${hasMinPrice ? `<br><span style="color: var(--warning); display: inline-block; margin-top: 4px;">Фильтр цены: от ${curr.minPrice.toLocaleString('ru-RU')} ₽.</span>` : ''}
           <br>Радар работает 24/7 и пришлет уведомление при появлении свежих объявлений.
         </p>
         <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -1309,13 +1308,13 @@ function renderEmptyState() {
             Просканировать Авито сейчас
           </button>
           ${!isRossiya ? `
-            <button class="filter-chip" onclick="window.app.expandSearchToRussia('${State.currentSearchId}')" style="height: 38px; justify-content: center; font-size: 12px; border-color: rgba(99, 102, 241, 0.4); color: #A5B4FC;">
-              🌐 Искать по всей России
+            <button class="filter-chip" onclick="window.app.expandSearchToRussia('${State.currentSearchId}')" style="height: 38px; justify-content: center; font-size: 12px; border-color: rgba(197, 160, 89, 0.4); color: var(--primary);">
+              Искать по всей России
             </button>
           ` : ''}
           ${hasMinPrice ? `
-            <button class="filter-chip" onclick="window.app.resetMinPrice('${State.currentSearchId}')" style="height: 38px; justify-content: center; font-size: 12px; border-color: rgba(245, 158, 11, 0.4); color: #FCD34D;">
-              ❌ Сбросить минимальную цену (${curr.minPrice.toLocaleString('ru-RU')} ₽)
+            <button class="filter-chip" onclick="window.app.resetMinPrice('${State.currentSearchId}')" style="height: 38px; justify-content: center; font-size: 12px; border-color: rgba(217, 119, 6, 0.4); color: #f59e0b;">
+              Сбросить минимальную цену (${curr.minPrice.toLocaleString('ru-RU')} ₽)
             </button>
           ` : ''}
         </div>

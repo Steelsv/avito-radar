@@ -316,20 +316,19 @@ class AvitoTelegramBot:
     def send_main_menu(self, chat_id: int, message_id: int | None = None) -> None:
         session = self.get_session(chat_id)
         session.state = "IDLE"
-        watch_status = "🟢 24/7 АКТИВЕН" if self.monitoring_active else "🔴 ВЫКЛЮЧЕН"
+        watch_status = "24/7 Активен" if self.monitoring_active else "Выключен"
         searches = list_searches(user_id=chat_id)
         text = (
-            f"📡 <b>СМОТРЯЩИЙ ЗА АВИТО // RADAR TERMINAL</b>\n"
-            f"<code>[ ⠋ RADAR SCANNING 24/7 ] ━━━━━━━━━━━━ 100%</code>\n\n"
-            f"🟢 <b>Статус радара:</b> <code>{watch_status}</code>\n"
-            f"🔎 <b>Активных радаров:</b> <code>{len(searches)} шт.</code>\n\n"
-            f"⚡ <b>Все функции доступны в едином Mini App:</b>\n"
-            f"• 🔎 Мгновенный поиск товаров и авто с подсказками\n"
-            f"• 📊 Оценка рыночной цены и подсветка скидок до 50%\n"
+            f"🏛 <b>AVITO RADAR // TERMINAL</b>\n"
+            f"<i>Премиальный мониторинг выгодных предложений</i>\n\n"
+            f"🟢 <b>Статус:</b> <code>{watch_status}</code> (интервал: 15 мин)\n"
+            f"🎯 <b>Отслеживаемых радаров:</b> <code>{len(searches)} шт.</code>\n\n"
+            f"⚡ <b>Все функции доступны в едином терминале:</b>\n"
+            f"• 🔎 Мгновенный поиск товаров и авто с автодополнением\n"
+            f"• 📊 Оценка рыночной стоимости и подсветка максимальной выгоды\n"
             f"• 🛡 Защита от байт-цен (100 ₽), дефектов и мусора\n"
-            f"• 📈 Режим таблицы (полная замена Excel прямо в Telegram)\n\n"
-            f"<i>Уведомления о новых горячих предложениях поступают сюда мгновенно.</i>\n\n"
-            f"👇 <b>Нажмите кнопку ниже на всю ширину для входа:</b>"
+            f"• 📈 Режим интерактивной таблицы прямо в Telegram\n\n"
+            f"<i>Уведомления о новых предложениях ниже рынка поступают мгновенно.</i>"
         )
         self.render_menu(chat_id, text, self.main_menu_keyboard(chat_id), message_id=message_id)
 
