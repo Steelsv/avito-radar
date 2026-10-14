@@ -139,7 +139,7 @@ class AvitoTelegramBot:
 
     def setup_menu_button(self) -> None:
         """Configure Telegram bottom-left Menu Button to open Mini App on iOS & Android."""
-        miniapp_url = os.environ.get("MINI_APP_URL", "https://steelsv.github.io/avito-radar/")
+        miniapp_url = os.environ.get("MINI_APP_URL", "https://avito-radar.onrender.com/")
         try:
             self.call_api("setChatMenuButton", {
                 "menu_button": {
@@ -243,7 +243,8 @@ class AvitoTelegramBot:
 
     def send_photo_alert(self, chat_id: int, item: ParsedItem, search_title: str) -> None:
         caption = format_ad_message(search_title, item)
-        miniapp_url = os.environ.get("MINI_APP_URL", "https://avito-radar.onrender.com/")
+        base_url = os.environ.get("MINI_APP_URL", "https://avito-radar.onrender.com/").rstrip("/")
+        miniapp_url = f"{base_url}/?user_id={chat_id}"
         kb = {
             "inline_keyboard": [
                 [
@@ -277,8 +278,9 @@ class AvitoTelegramBot:
 
     # --- Menus and Keyboards ---
 
-    def main_menu_keyboard(self) -> dict[str, Any]:
-        miniapp_url = os.environ.get("MINI_APP_URL", "https://avito-radar.onrender.com/")
+    def main_menu_keyboard(self, chat_id: int | None = None) -> dict[str, Any]:
+        base_url = os.environ.get("MINI_APP_URL", "https://avito-radar.onrender.com/").rstrip("/")
+        miniapp_url = f"{base_url}/?user_id={chat_id}" if chat_id else f"{base_url}/"
         return {
             "inline_keyboard": [
                 [
@@ -295,7 +297,7 @@ class AvitoTelegramBot:
         session = self.get_session(chat_id)
         session.state = "IDLE"
         watch_status = f"{tg_e(TG_EMOJI_CHECK, '✅')} ВКЛ (24/7)" if self.monitoring_active else f"{tg_e(TG_EMOJI_WARN, '❗️')} ВЫКЛ"
-        searches = list_searches()
+        searches = list_searches(user_id=chat_id)
         text = (
             f"{tg_e(TG_EMOJI_RADAR, '👁')} <b>СМОТРЯЩИЙ ЗА АВИТО // RADAR TERMINAL</b>\n\n"
             f"{tg_e(TG_EMOJI_LIGHTNING, '⚡')} <b>Все управление перенесено в Mini App:</b>\n"
@@ -308,7 +310,7 @@ class AvitoTelegramBot:
             f"<i>В этот чат приходят только карточки новых выгодных объявлений.</i>\n\n"
             f"Нажмите кнопку ниже для перехода в терминал 👇"
         )
-        self.render_menu(chat_id, text, self.main_menu_keyboard(), message_id=message_id)
+        self.render_menu(chat_id, text, self.main_menu_keyboard(chat_id), message_id=message_id)
 
     def send_add_menu(self, chat_id: int, message_id: int | None = None) -> None:
         text = "<b>Как вы хотите настроить поиск?</b>"
@@ -357,7 +359,7 @@ class AvitoTelegramBot:
         self.render_menu(chat_id, text, kb, message_id=message_id)
 
     def send_searches_list(self, chat_id: int, message_id: int | None = None) -> None:
-        searches = list_searches()
+        searches = list_searches(user_id=chat_id)
         if not searches:
             text = "📋 <b>У вас пока нет сохранённых поисков.</b>\nНажмите «➕ Добавить поиск», чтобы создать первый!"
             kb = {
@@ -435,7 +437,7 @@ class AvitoTelegramBot:
                     resolved_name = f"{base}_{counter}"
                     counter += 1
 
-            rec = create_search_from_url(client, url, custom_name=resolved_name)
+            rec = create_search_from_url(client, url, custom_name=resolved_name, user_id=chat_id)
             pmin_str = f"\n💰 Мин. цена: {rec.min_price:,} ₽" if rec.min_price else ""
             text = (
                 f"✅ <b>Поиск успешно настроен и сохранён!</b>\n\n"
@@ -574,7 +576,7 @@ class AvitoTelegramBot:
                 if session.temp_pmin:
                     target_url += f"&pmin={session.temp_pmin}"
                 clean_q = transliterate(session.temp_query).replace(" ", "_")
-                c_name = re.sub(r"[^a-z0-9_-]+", "_", f"{clean_q}_{slug}").strip("_")
+                c_name = re.sub(r"[^a-z0-9_-]+", "_", f"u{chat_id}_{clean_q}_{slug}").strip("_")
                 self.process_create_search(chat_id, target_url, custom_name=c_name, message_id=message_id)
 
         elif data == "add_by_url":
@@ -625,7 +627,7 @@ class AvitoTelegramBot:
 
         elif data.startswith("action_del_"):
             search_name = data[len("action_del_"):]
-            delete_search(search_name)
+            delete_search(search_name, user_id=chat_id)
             self.send_searches_list(chat_id, message_id=message_id)
 
         elif data.startswith("set_pmin_"):
@@ -755,7 +757,20 @@ class AvitoTelegramBot:
                                     break
 
                             append_alert(s, parsed)
-                            self.send_photo_alert(int(self.config.chat_id), parsed, s.title)
+                            target_chat_id = None
+                            if s.user_id and str(s.user_id).isdigit() and int(s.user_id) > 0:
+                                target_chat_id = int(s.user_id)
+                            elif self.config and self.config.chat_id:
+                                try:
+                                    target_chat_id = int(self.config.chat_id)
+                                except Exception:
+                                    pass
+
+                            if target_chat_id:
+                                try:
+                                    self.send_photo_alert(target_chat_id, parsed, s.title)
+                                except Exception as alert_err:
+                                    logger.warning("Failed to send alert to user %s for %s: %s", target_chat_id, s.name, alert_err)
 
                     if changed:
                         save_listings(s, listings)
@@ -800,10 +815,10 @@ class AvitoTelegramBot:
                 time.sleep(2)
 
 
-def generate_api_bundle() -> dict[str, Any]:
+def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
     """Compile cached search listings and market analysis for Mini App."""
     bundle: dict[str, Any] = {}
-    for s in list_searches():
+    for s in list_searches(user_id=user_id):
         raws = load_listings(s)
         if not raws:
             try:
@@ -857,6 +872,37 @@ def start_healthcheck_server() -> None:
     port = int(os.environ.get("PORT", "7860"))
 
     class MiniAppServerHandler(http.server.BaseHTTPRequestHandler):
+        def get_user_id(self, query_params: dict[str, list[str]], body_data: dict[str, Any] | None = None) -> str:
+            uid = self.headers.get("X-Telegram-User-Id")
+            if uid and uid.strip():
+                return uid.strip()
+
+            if "user_id" in query_params and query_params["user_id"]:
+                val = query_params["user_id"][0].strip()
+                if val:
+                    return val
+
+            init_data = (
+                self.headers.get("X-Telegram-Init-Data")
+                or (query_params.get("initData", [""])[0])
+                or (query_params.get("tgWebAppData", [""])[0])
+            )
+            if init_data:
+                try:
+                    parsed_qs = urllib.parse.parse_qs(init_data)
+                    if "user" in parsed_qs:
+                        user_obj = json.loads(parsed_qs["user"][0])
+                        if "id" in user_obj:
+                            return str(user_obj["id"]).strip()
+                except Exception:
+                    pass
+
+            if body_data and "user_id" in body_data and body_data["user_id"]:
+                return str(body_data["user_id"]).strip()
+
+            owner_id = str(os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
+            return owner_id or "default"
+
         def do_OPTIONS(self) -> None:
             self.send_response(200)
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -865,13 +911,16 @@ def start_healthcheck_server() -> None:
             self.end_headers()
 
         def do_DELETE(self) -> None:
-            path = self.path.split("?")[0]
+            parsed_url = urllib.parse.urlparse(self.path)
+            path = parsed_url.path
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            uid = self.get_user_id(query_params)
             if path.startswith("/api/searches/"):
                 search_id = path.replace("/api/searches/", "").strip()
                 success = False
                 if search_id:
-                    success = delete_search(search_id)
-                    logger.info("Search '%s' deleted via DELETE method (success=%s)", search_id, success)
+                    success = delete_search(search_id, user_id=uid)
+                    logger.info("Search '%s' deleted via DELETE method by user %s (success=%s)", search_id, uid, success)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Access-Control-Allow-Origin", "*")
@@ -882,7 +931,11 @@ def start_healthcheck_server() -> None:
             self.end_headers()
 
         def do_GET(self) -> None:
-            path = self.path.split("?")[0]
+            parsed_url = urllib.parse.urlparse(self.path)
+            path = parsed_url.path
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            uid = self.get_user_id(query_params)
+
             if path in ("/", "/index.html"):
                 html_path = Path("index.html") if Path("index.html").exists() else (Path("web/index.html") if Path("web/index.html").exists() else Path("frontend/index.html"))
                 if html_path.exists():
@@ -896,7 +949,7 @@ def start_healthcheck_server() -> None:
 
             if path == "/api/bundle":
                 try:
-                    bundle_data = generate_api_bundle()
+                    bundle_data = generate_api_bundle(user_id=uid)
                     payload = json.dumps(bundle_data, ensure_ascii=False).encode("utf-8")
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -917,6 +970,7 @@ def start_healthcheck_server() -> None:
 
             if path == "/api/searches":
                 try:
+                    user_searches = list_searches(user_id=uid)
                     searches = [
                         {
                             "id": s.name,
@@ -925,7 +979,7 @@ def start_healthcheck_server() -> None:
                             "minPrice": s.min_price or 0,
                             "isActive": True
                         }
-                        for s in list_searches()
+                        for s in user_searches
                     ]
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -938,9 +992,12 @@ def start_healthcheck_server() -> None:
 
             if path == "/api/lots":
                 try:
-                    bundle = generate_api_bundle()
+                    bundle = generate_api_bundle(user_id=uid)
+                    search_id_filter = query_params.get("searchId", [""])[0].strip()
                     all_lots = []
                     for s_id, s_data in bundle.items():
+                        if search_id_filter and search_id_filter != "all" and s_id != search_id_filter:
+                            continue
                         for it in s_data.get("items", []):
                             all_lots.append({
                                 "id": str(it["id"]),
@@ -1009,12 +1066,20 @@ def start_healthcheck_server() -> None:
             self.end_headers()
 
         def do_POST(self) -> None:
-            path = self.path.split("?")[0]
+            parsed_url = urllib.parse.urlparse(self.path)
+            path = parsed_url.path
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode("utf-8") if content_length > 0 else "{}"
+            req_data = {}
+            try:
+                req_data = json.loads(body)
+            except Exception:
+                pass
+            uid = self.get_user_id(query_params, req_data)
+
             if path in ("/api/searches", "/api/searches/create"):
                 try:
-                    content_length = int(self.headers.get("Content-Length", 0))
-                    body = self.rfile.read(content_length).decode("utf-8")
-                    req_data = json.loads(body)
                     query = req_data.get("query", "").strip()
                     city = req_data.get("city", "chelyabinsk").strip()
                     min_price = int(req_data.get("min_price") or 0)
@@ -1023,7 +1088,7 @@ def start_healthcheck_server() -> None:
                     if query:
                         city_slug = transliterate(city).replace(" ", "_").lower()
                         clean_q = transliterate(query).replace(" ", "_").lower()
-                        c_name = re.sub(r"[^a-z0-9_-]+", "_", f"{clean_q}_{city_slug}").strip("_")
+                        c_name = re.sub(r"[^a-z0-9_-]+", "_", f"u{uid}_{clean_q}_{city_slug}").strip("_")
                         encoded_q = urllib.parse.quote(query)
                         target_url = f"https://www.avito.ru/{city_slug}?q={encoded_q}"
                         if min_price > 0:
@@ -1044,9 +1109,10 @@ def start_healthcheck_server() -> None:
                                 city=city_display,
                                 params={"q": query, "locationId": loc_id},
                                 min_price=min_price if min_price > 0 else None,
+                                user_id=str(uid),
                             )
                             save_search(s_rec)
-                            logger.info("Search '%s' successfully created via API", c_name)
+                            logger.info("Search '%s' successfully created via API for user %s", c_name, uid)
 
                         # Trigger background scan of first page immediately
                         def _bg_scan(rec: SearchRecord) -> None:
@@ -1087,14 +1153,11 @@ def start_healthcheck_server() -> None:
 
             if path in ("/api/searches/delete", "/api/delete"):
                 try:
-                    content_length = int(self.headers.get("Content-Length", 0))
-                    body = self.rfile.read(content_length).decode("utf-8")
-                    req_data = json.loads(body)
-                    name = req_data.get("name", "").strip()
+                    name = (req_data.get("name") or req_data.get("id") or "").strip()
                     success = False
                     if name:
-                        success = delete_search(name)
-                        logger.info("Search '%s' deleted via API (success=%s)", name, success)
+                        success = delete_search(name, user_id=uid)
+                        logger.info("Search '%s' deleted via API by user %s (success=%s)", name, uid, success)
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.send_header("Access-Control-Allow-Origin", "*")
@@ -1112,17 +1175,14 @@ def start_healthcheck_server() -> None:
 
             if path in ("/api/searches/scan", "/api/scan"):
                 try:
-                    content_length = int(self.headers.get("Content-Length", 0))
-                    body = self.rfile.read(content_length).decode("utf-8")
-                    req_data = json.loads(body)
-                    name = req_data.get("name", "").strip()
+                    name = (req_data.get("name") or req_data.get("id") or "").strip()
                     count = 0
                     if name:
                         s_rec = load_search(name)
                         if s_rec:
                             cl = AvitoClient()
                             count = scan_search(s_rec, client=cl, max_pages=1)
-                    bundle_data = generate_api_bundle()
+                    bundle_data = generate_api_bundle(user_id=uid)
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.send_header("Access-Control-Allow-Origin", "*")

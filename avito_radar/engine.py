@@ -40,6 +40,7 @@ def create_search_from_url(
     *,
     custom_name: str | None = None,
     city_override: str | None = None,
+    user_id: str | int = "",
 ) -> SearchRecord:
     cache = load_locations_cache()
     resolved: SearchConfig = resolve_url(client, url, locations_cache=cache, city_override=city_override)
@@ -53,6 +54,7 @@ def create_search_from_url(
         catalog_url=resolved.catalog_url,
         city=resolved.city,
         params=resolved.params,
+        user_id=str(user_id or "").strip(),
     )
     save_search(record)
     return record

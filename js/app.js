@@ -59,14 +59,16 @@ const SafeStorage = {
   async initCloudSync() {
     try {
       if (typeof window !== 'undefined' && window.Telegram?.WebApp?.CloudStorage) {
+        const searchKey = getUserStorageKey('searches');
+        const favKey = getUserStorageKey('favorites');
         return new Promise((resolve) => {
-          window.Telegram.WebApp.CloudStorage.getItems(['avitoradar_searches_cache', 'avitoradar_favorites'], (err, values) => {
+          window.Telegram.WebApp.CloudStorage.getItems([searchKey, favKey], (err, values) => {
             if (!err && values) {
-              if (values.avitoradar_searches_cache && !window.localStorage?.getItem('avitoradar_searches_cache')) {
-                SafeStorage.setItem('avitoradar_searches_cache', values.avitoradar_searches_cache);
+              if (values[searchKey] && !window.localStorage?.getItem(searchKey)) {
+                SafeStorage.setItem(searchKey, values[searchKey]);
               }
-              if (values.avitoradar_favorites && !window.localStorage?.getItem('avitoradar_favorites')) {
-                SafeStorage.setItem('avitoradar_favorites', values.avitoradar_favorites);
+              if (values[favKey] && !window.localStorage?.getItem(favKey)) {
+                SafeStorage.setItem(favKey, values[favKey]);
               }
             }
             resolve();
@@ -76,6 +78,80 @@ const SafeStorage = {
     } catch (_) {}
   }
 };
+
+// ==========================================================================
+// 1.1 Multi-User Identity & Storage Key Scope
+// ==========================================================================
+function getCurrentUserId() {
+  let uid = null;
+  if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
+    uid = String(window.Telegram.WebApp.initDataUnsafe.user.id).trim();
+  }
+  if (!uid) {
+    try {
+      if (typeof window !== 'undefined' && window.location) {
+        const params = new URLSearchParams(window.location.search);
+        const qUid = params.get('user_id');
+        if (qUid && qUid.trim()) uid = qUid.trim();
+      }
+    } catch (_) {}
+  }
+  if (!uid) {
+    try {
+      if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initData) {
+        const params = new URLSearchParams(window.Telegram.WebApp.initData);
+        const userStr = params.get('user');
+        if (userStr) {
+          const userObj = JSON.parse(userStr);
+          if (userObj?.id) uid = String(userObj.id).trim();
+        }
+      }
+    } catch (_) {}
+  }
+  if (!uid) {
+    try {
+      if (typeof window !== 'undefined' && window.location?.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const tgData = hashParams.get('tgWebAppData');
+        if (tgData) {
+          const parsed = new URLSearchParams(tgData);
+          const userStr = parsed.get('user');
+          if (userStr) {
+            const userObj = JSON.parse(userStr);
+            if (userObj?.id) uid = String(userObj.id).trim();
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (uid) {
+    SafeStorage.setItem('avitoradar_client_uid', uid);
+    return uid;
+  }
+
+  let guestId = SafeStorage.getItem('avitoradar_client_uid');
+  if (!guestId) {
+    guestId = 'guest_' + Math.random().toString(36).substring(2, 10);
+    SafeStorage.setItem('avitoradar_client_uid', guestId);
+  }
+  return guestId;
+}
+
+function getUserStorageKey(suffix) {
+  const uid = getCurrentUserId();
+  return `avitoradar_${suffix}_${uid}`;
+}
+
+function getApiHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  const uid = getCurrentUserId();
+  if (uid) headers['X-Telegram-User-Id'] = uid;
+  if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initData) {
+    headers['X-Telegram-Init-Data'] = window.Telegram.WebApp.initData;
+  }
+  return headers;
+}
 
 // ==========================================================================
 // 2. City Abbreviation Mapping & Formatting Helpers
@@ -176,6 +252,32 @@ const TelegramService = {
       if (tg.isVerticalSwipesEnabled !== undefined) {
         tg.isVerticalSwipesEnabled = true;
       }
+
+      const updateSafeAreas = () => {
+        let top = 0;
+        if (tg.safeAreaInset?.top) top = Math.max(top, tg.safeAreaInset.top);
+        if (tg.contentSafeAreaInset?.top) top = Math.max(top, tg.contentSafeAreaInset.top);
+
+        if (top > 0) {
+          document.documentElement.style.setProperty('--safe-area-top', `${top}px`);
+        } else {
+          document.documentElement.style.setProperty('--safe-area-top', 'max(env(safe-area-inset-top, 0px), 16px)');
+        }
+
+        let bottom = 0;
+        if (tg.safeAreaInset?.bottom) bottom = Math.max(bottom, tg.safeAreaInset.bottom);
+        if (tg.contentSafeAreaInset?.bottom) bottom = Math.max(bottom, tg.contentSafeAreaInset.bottom);
+        if (bottom > 0) {
+          document.documentElement.style.setProperty('--safe-area-bottom', `${bottom}px`);
+        }
+      };
+
+      updateSafeAreas();
+      if (typeof tg.onEvent === 'function') {
+        tg.onEvent('safeAreaChanged', updateSafeAreas);
+        tg.onEvent('contentSafeAreaChanged', updateSafeAreas);
+        tg.onEvent('viewportChanged', updateSafeAreas);
+      }
     } catch (e) {
       console.warn('[TelegramService] Init warning:', e);
     }
@@ -208,7 +310,7 @@ const TelegramService = {
 };
 
 // ==========================================================================
-// 4. API Service & Offline Cache
+// 4. API Service & Offline Cache (Multi-Tenant Per User)
 // ==========================================================================
 const API_BASE_URL = (typeof window !== 'undefined' && (window.location.hostname.includes('github.io') || (window.location.hostname === 'localhost' && window.location.port !== '7860')))
   ? 'https://avito-radar.onrender.com'
@@ -216,47 +318,24 @@ const API_BASE_URL = (typeof window !== 'undefined' && (window.location.hostname
 
 const ApiService = {
   async getSearches() {
+    const key = getUserStorageKey('searches');
+    const uid = getCurrentUserId();
     try {
-      const res = await fetch(`${API_BASE_URL}/api/searches`);
+      const res = await fetch(`${API_BASE_URL}/api/searches?user_id=${encodeURIComponent(uid)}`, {
+        headers: getApiHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.searches && Array.isArray(data.searches)) {
-          if (data.searches.length > 0) {
-            SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(data.searches));
-            return data.searches;
-          }
-          // Server returned 0 searches: check if client has cached searches to restore
-          const cached = SafeStorage.getItem('avitoradar_searches_cache');
-          if (cached) {
-            try {
-              const parsed = JSON.parse(cached);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                // Re-sync each search to server in background
-                parsed.forEach(s => {
-                  fetch(`${API_BASE_URL}/api/searches`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      query: s.query || s.title || s.id,
-                      city: s.city || 'chelyabinsk',
-                      min_price: s.minPrice || 0
-                    })
-                  }).catch(() => {});
-                });
-                return parsed;
-              }
-            } catch (_) {}
-          }
-          SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify([]));
-          return [];
+          SafeStorage.setItem(key, JSON.stringify(data.searches));
+          return data.searches;
         }
       }
     } catch (err) {
       console.warn('[API] getSearches network call failed, falling back to cache:', err.message);
     }
 
-    // Check cached searches
-    const cached = SafeStorage.getItem('avitoradar_searches_cache');
+    const cached = SafeStorage.getItem(key);
     if (cached) {
       try {
         const parsed = JSON.parse(cached);
@@ -268,11 +347,14 @@ const ApiService = {
   },
 
   async createSearch(payload) {
+    const key = getUserStorageKey('searches');
+    const uid = getCurrentUserId();
+    const bodyPayload = { ...payload, user_id: uid };
     try {
-      const res = await fetch(`${API_BASE_URL}/api/searches`, {
+      const res = await fetch(`${API_BASE_URL}/api/searches?user_id=${encodeURIComponent(uid)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: getApiHeaders(),
+        body: JSON.stringify(bodyPayload)
       });
       if (res.ok) {
         const data = await res.json();
@@ -280,7 +362,7 @@ const ApiService = {
           const existing = await this.getSearches();
           const filtered = existing.filter(s => s.id !== data.search.id);
           filtered.unshift(data.search);
-          SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(filtered));
+          SafeStorage.setItem(key, JSON.stringify(filtered));
           return data.search;
         }
         if (data.name) {
@@ -294,7 +376,7 @@ const ApiService = {
           const existing = await this.getSearches();
           const filtered = existing.filter(x => x.id !== s.id);
           filtered.unshift(s);
-          SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(filtered));
+          SafeStorage.setItem(key, JSON.stringify(filtered));
           return s;
         }
       }
@@ -302,7 +384,7 @@ const ApiService = {
       console.warn('[API] createSearch API offline, persisting locally:', err.message);
     }
 
-    const id = `${payload.query.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, '_')}_${payload.city || 'chelyabinsk'}`.replace(/^_+|_+$/g, '');
+    const id = `u${uid}_${payload.query.toLowerCase().replace(/[^a-z0-9а-яё]+/gi, '_')}_${payload.city || 'chelyabinsk'}`.replace(/^_+|_+$/g, '');
     const newSearch = {
       id: id,
       query: payload.query,
@@ -315,34 +397,40 @@ const ApiService = {
 
     const existing = await this.getSearches();
     existing.unshift(newSearch);
-    SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(existing));
+    SafeStorage.setItem(key, JSON.stringify(existing));
     return newSearch;
   },
 
   async deleteSearch(id) {
+    const key = getUserStorageKey('searches');
+    const uid = getCurrentUserId();
     try {
-      await fetch(`${API_BASE_URL}/api/searches/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await fetch(`${API_BASE_URL}/api/searches/${encodeURIComponent(id)}?user_id=${encodeURIComponent(uid)}`, {
+        method: 'DELETE',
+        headers: getApiHeaders()
+      });
     } catch (_) {}
     try {
       await fetch(`${API_BASE_URL}/api/searches/delete`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: id, id: id })
+        headers: getApiHeaders(),
+        body: JSON.stringify({ name: id, id: id, user_id: uid })
       });
     } catch (_) {}
 
     const existing = await this.getSearches();
     const updated = existing.filter(s => s.id !== id);
-    SafeStorage.setItem('avitoradar_searches_cache', JSON.stringify(updated));
+    SafeStorage.setItem(key, JSON.stringify(updated));
     return true;
   },
 
   async triggerScan(id) {
+    const uid = getCurrentUserId();
     try {
       const res = await fetch(`${API_BASE_URL}/api/searches/scan`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: id, id: id })
+        headers: getApiHeaders(),
+        body: JSON.stringify({ name: id, id: id, user_id: uid })
       });
       return res.ok;
     } catch (_) {
@@ -351,44 +439,33 @@ const ApiService = {
   },
 
   async getLots(filters = {}) {
+    const key = getUserStorageKey('lots');
+    const uid = getCurrentUserId();
     try {
       const params = new URLSearchParams();
-      if (filters.includeDismissed) params.append('includeDismissed', 'true');
-      const res = await fetch(`${API_BASE_URL}/api/lots?${params.toString()}`);
+      params.append('user_id', uid);
+      if (filters.searchId && filters.searchId !== 'all') {
+        params.append('searchId', filters.searchId);
+      }
+      const res = await fetch(`${API_BASE_URL}/api/lots?${params.toString()}`, {
+        headers: getApiHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.lots && Array.isArray(data.lots)) {
-          if (data.lots.length > 0) {
-            const dismissedSet = this.getDismissedIds();
-            data.lots.forEach(l => {
-              if (dismissedSet.has(String(l.id))) l.isDismissed = true;
-            });
-            SafeStorage.setItem('avitoradar_lots_cache', JSON.stringify(data.lots));
-            return data.lots;
-          }
-          // Server returned 0 lots (e.g. still scanning): keep cached lots
-          const cached = SafeStorage.getItem('avitoradar_lots_cache');
-          if (cached) {
-            try {
-              let lots = JSON.parse(cached);
-              if (Array.isArray(lots) && lots.length > 0) {
-                const dismissedSet = this.getDismissedIds();
-                lots.forEach(l => {
-                  if (dismissedSet.has(String(l.id))) l.isDismissed = true;
-                });
-                return lots;
-              }
-            } catch (_) {}
-          }
-          return [];
+          const dismissedSet = this.getDismissedIds();
+          data.lots.forEach(l => {
+            if (dismissedSet.has(String(l.id))) l.isDismissed = true;
+          });
+          SafeStorage.setItem(key, JSON.stringify(data.lots));
+          return data.lots;
         }
       }
     } catch (err) {
       console.warn('[API] getLots fetch failed, using offline fallback:', err.message);
     }
 
-    // Cached lots
-    const cached = SafeStorage.getItem('avitoradar_lots_cache');
+    const cached = SafeStorage.getItem(key);
     if (cached) {
       try {
         let lots = JSON.parse(cached);
@@ -407,10 +484,14 @@ const ApiService = {
     const strId = String(id);
     const dismissed = this.getDismissedIds();
     dismissed.add(strId);
-    SafeStorage.setItem('avitoradar_dismissed_ids', JSON.stringify(Array.from(dismissed)));
+    SafeStorage.setItem(getUserStorageKey('dismissed'), JSON.stringify(Array.from(dismissed)));
 
+    const uid = getCurrentUserId();
     try {
-      await fetch(`${API_BASE_URL}/api/lots/${strId}/dismiss`, { method: 'POST' });
+      await fetch(`${API_BASE_URL}/api/lots/${strId}/dismiss?user_id=${encodeURIComponent(uid)}`, {
+        method: 'POST',
+        headers: getApiHeaders()
+      });
     } catch (_) {}
     return true;
   },
@@ -419,17 +500,21 @@ const ApiService = {
     const strId = String(id);
     const dismissed = this.getDismissedIds();
     dismissed.delete(strId);
-    SafeStorage.setItem('avitoradar_dismissed_ids', JSON.stringify(Array.from(dismissed)));
+    SafeStorage.setItem(getUserStorageKey('dismissed'), JSON.stringify(Array.from(dismissed)));
 
+    const uid = getCurrentUserId();
     try {
-      await fetch(`${API_BASE_URL}/api/lots/${strId}/restore`, { method: 'POST' });
+      await fetch(`${API_BASE_URL}/api/lots/${strId}/restore?user_id=${encodeURIComponent(uid)}`, {
+        method: 'POST',
+        headers: getApiHeaders()
+      });
     } catch (_) {}
     return true;
   },
 
   getDismissedIds() {
     try {
-      const raw = SafeStorage.getItem('avitoradar_dismissed_ids');
+      const raw = SafeStorage.getItem(getUserStorageKey('dismissed'));
       if (raw) return new Set(JSON.parse(raw));
     } catch (_) {}
     return new Set();
@@ -454,7 +539,7 @@ const State = {
 
 // Load saved favorites safely
 try {
-  const savedFavs = SafeStorage.getItem('avitoradar_favorites');
+  const savedFavs = SafeStorage.getItem(getUserStorageKey('favorites'));
   if (savedFavs) State.favorites = JSON.parse(savedFavs);
 } catch (_) {}
 
@@ -577,7 +662,7 @@ async function handleConfirmDelete() {
   await ApiService.deleteSearch(id);
   State.searches = State.searches.filter(s => s.id !== id);
   State.lots = State.lots.filter(l => l.searchId !== id);
-  SafeStorage.setItem('avitoradar_lots_cache', JSON.stringify(State.lots));
+  SafeStorage.setItem(getUserStorageKey('lots'), JSON.stringify(State.lots));
 
   if (State.currentSearchId === id) {
     State.currentSearchId = 'all';
@@ -625,7 +710,7 @@ function toggleFav(event, lotId) {
   } else {
     State.favorites.push(strId);
   }
-  SafeStorage.setItem('avitoradar_favorites', JSON.stringify(State.favorites));
+  SafeStorage.setItem(getUserStorageKey('favorites'), JSON.stringify(State.favorites));
   updateStats();
   renderView();
 }
@@ -685,19 +770,19 @@ function openLotModal(lot) {
   const mDate = document.getElementById('modalDate');
 
   if (mTitle) mTitle.textContent = lot.title;
-  if (mPrice) mPrice.textContent = `${lot.price.toLocaleString('ru-RU')} ₽`;
+  if (mPrice) mPrice.textContent = `${(lot.price || 0).toLocaleString('ru-RU')} ₽`;
   if (mMarket) mMarket.textContent = lot.marketPrice ? `Оценка рынка: ${lot.marketPrice.toLocaleString('ru-RU')} ₽` : '';
   if (mDisc) mDisc.textContent = lot.discount ? `${lot.discount}%` : '';
   if (mDesc) mDesc.textContent = lot.description || 'Описание отсутствует.';
-  if (mSeller) mSeller.textContent = lot.seller.name;
-  if (mType) mType.textContent = lot.seller.type === 'private' ? 'Частное лицо' : 'Компания / Магазин';
-  if (mLoc) mLoc.textContent = lot.seller.location;
+  if (mSeller) mSeller.textContent = lot.seller?.name || 'Частник';
+  if (mType) mType.textContent = lot.seller?.type === 'private' ? 'Частное лицо' : 'Компания / Магазин';
+  if (mLoc) mLoc.textContent = lot.seller?.location || 'Челябинск';
   if (mDate) mDate.textContent = lot.publishedText || 'сегодня';
 
   const ratingEl = document.getElementById('modalSellerRating');
   const ratingVal = document.getElementById('modalSellerRatingVal');
   if (ratingEl && ratingVal) {
-    if (lot.seller.rating) {
+    if (lot.seller?.rating) {
       ratingVal.textContent = lot.seller.rating;
       ratingEl.style.display = 'inline-flex';
     } else {
@@ -741,10 +826,49 @@ function setQueryPreset(q, minP) {
   if (minInput && minP) minInput.value = minP;
 }
 
+async function quickAddPreset(query, city, minPrice) {
+  TelegramService.haptic('medium');
+  showToast(`Запуск радара «${query}»...`, 'info');
+  try {
+    const s = await ApiService.createSearch({
+      query: query,
+      city: city || 'chelyabinsk',
+      minPrice: Number(minPrice) || 0
+    });
+    if (s && s.id) {
+      State.currentSearchId = s.id;
+    }
+    await loadData();
+    showToast(`Радар «${query}» успешно запущен!`, 'success');
+  } catch (err) {
+    console.error('Quick add preset error:', err);
+    showToast('Ошибка при запуске радара', 'error');
+  }
+}
+
+function applyQueryFilter(query) {
+  State.searchQuery = (query || '').trim().toLowerCase();
+  if (DOM.filterInput && DOM.filterInput.value !== query) {
+    DOM.filterInput.value = query || '';
+  }
+  if (DOM.btnClearFilter) {
+    if (State.searchQuery) DOM.btnClearFilter.classList.remove('hidden');
+    else DOM.btnClearFilter.classList.add('hidden');
+  }
+  updateStats();
+  renderView();
+}
+
 // ==========================================================================
 // 9. Data Fetching & Sync
 // ==========================================================================
 async function loadData() {
+  try {
+    const favKey = getUserStorageKey('favorites');
+    const savedFavs = SafeStorage.getItem(favKey);
+    if (savedFavs) State.favorites = JSON.parse(savedFavs);
+  } catch (_) {}
+
   State.searches = await ApiService.getSearches();
   State.lots = await ApiService.getLots({ includeDismissed: true });
 
@@ -755,7 +879,20 @@ async function loadData() {
 
 function populateSearchSelector() {
   if (!DOM.searchSelector) return;
-  DOM.searchSelector.innerHTML = '<option value="all">Все радары (общий поток)</option>';
+  DOM.searchSelector.innerHTML = '';
+
+  if (State.searches.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'Нет активных радаров';
+    DOM.searchSelector.appendChild(opt);
+    return;
+  }
+
+  const allOpt = document.createElement('option');
+  allOpt.value = 'all';
+  allOpt.textContent = 'Все радары (общий поток)';
+  DOM.searchSelector.appendChild(allOpt);
 
   State.searches.forEach(s => {
     const opt = document.createElement('option');
@@ -826,7 +963,14 @@ function renderView() {
   if (!DOM.lotsContainer) initDOM();
   updateStats();
 
+  const statsGrid = document.getElementById('statsGrid');
+  const filterChipsRow = document.getElementById('filterChipsRow');
+  const searchRow = document.getElementById('filterInput')?.closest('div');
+
   if (State.viewMode === 'searches') {
+    if (statsGrid) statsGrid.style.display = 'none';
+    if (filterChipsRow) filterChipsRow.style.display = 'none';
+    if (searchRow) searchRow.style.display = 'none';
     if (DOM.lotsContainer) { DOM.lotsContainer.style.display = 'none'; DOM.lotsContainer.classList.add('hidden'); }
     if (DOM.tableWrapper) { DOM.tableWrapper.style.display = 'none'; DOM.tableWrapper.classList.add('hidden'); }
     if (DOM.emptyState) { DOM.emptyState.style.display = 'none'; DOM.emptyState.classList.add('hidden'); }
@@ -834,6 +978,10 @@ function renderView() {
     renderSearchesManager();
     return;
   }
+
+  if (statsGrid) statsGrid.style.display = '';
+  if (filterChipsRow) filterChipsRow.style.display = '';
+  if (searchRow) searchRow.style.display = '';
 
   if (DOM.searchesSection) {
     DOM.searchesSection.style.display = 'none';
@@ -929,6 +1077,42 @@ function updateStats() {
 
 function renderEmptyState() {
   if (!DOM.emptyState) return;
+
+  if (State.searches.length === 0) {
+    DOM.emptyState.innerHTML = `
+      <div class="onboarding-card" style="text-align: center; padding: 28px 16px; background: var(--surface-card); border-radius: 20px; border: 1px solid var(--border-subtle); max-width: 480px; margin: 10px auto;">
+        <div class="radar-logo" style="width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 16px;">
+          <div class="radar-beam"></div>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </div>
+        <div class="h3" style="font-size: 18px; margin-bottom: 8px;">Добро пожаловать в Radar Terminal!</div>
+        <p class="caption" style="font-size: 13px; line-height: 1.5; margin-bottom: 20px; color: var(--text-secondary);">
+          Создайте свой первый радар для мониторинга выгодных предложений на Авито. Мы отслеживаем новинки 24/7 и присылаем лучшие цены.
+        </p>
+
+        <div style="margin-bottom: 20px;">
+          <div style="font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 10px;">
+            Быстрый старт — популярные радары:
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
+            <button class="filter-chip" onclick="window.app.quickAddPreset('iPhone 15', 'chelyabinsk', 40000)" style="font-size: 12px; height: 34px;">📱 iPhone 15</button>
+            <button class="filter-chip" onclick="window.app.quickAddPreset('RTX 4070', 'chelyabinsk', 35000)" style="font-size: 12px; height: 34px;">💻 RTX 4070</button>
+            <button class="filter-chip" onclick="window.app.quickAddPreset('PlayStation 5', 'chelyabinsk', 25000)" style="font-size: 12px; height: 34px;">🎮 PS5</button>
+            <button class="filter-chip" onclick="window.app.quickAddPreset('RX 6700 XT', 'chelyabinsk', 20000)" style="font-size: 12px; height: 34px;">⚡ RX 6700 XT</button>
+          </div>
+        </div>
+
+        <button class="btn-cta" onclick="window.app.openNewSearchModal()" style="max-width: 260px; margin: 0 auto; height: 42px; font-size: 14px;">
+          <span>+</span>
+          <span>Настроить свой поиск</span>
+        </button>
+      </div>
+    `;
+    return;
+  }
 
   if (State.searchQuery) {
     DOM.emptyState.innerHTML = `
@@ -1093,12 +1277,12 @@ function createLotCard(lot) {
       <div class="card-meta">
         <div class="card-seller">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          <span>${escapeHtml(lot.seller.name)}</span>
-          ${lot.seller.rating ? `<span class="rating-badge font-mono">★ ${lot.seller.rating}</span>` : ''}
+          <span>${escapeHtml(lot.seller?.name || 'Частник')}</span>
+          ${lot.seller?.rating ? `<span class="rating-badge font-mono">★ ${lot.seller.rating}</span>` : ''}
         </div>
         <div class="card-location">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-          <span>${escapeHtml(lot.seller.location)}</span>
+          <span>${escapeHtml(lot.seller?.location || 'Челябинск')}</span>
         </div>
       </div>
 
@@ -1134,21 +1318,23 @@ function renderTableView(lots) {
   lots.forEach(lot => {
     const tr = document.createElement('tr');
     tr.dataset.id = lot.id;
-    const diffSign = lot.discount <= 0 ? '' : '+';
-    const isDeal = lot.discount <= -12;
+    const diffSign = (lot.discount || 0) <= 0 ? '' : '+';
+    const isDeal = (lot.discount || 0) <= -12;
     const searchObj = State.searches.find(s => s.id === lot.searchId);
-    const cityAbbr = getCityAbbr(searchObj?.city || lot.seller?.location);
+    const sellerLocation = lot.seller?.location || searchObj?.city || 'Челябинск';
+    const sellerName = lot.seller?.name || 'Частник';
+    const cityAbbr = getCityAbbr(searchObj?.city || sellerLocation);
 
     tr.innerHTML = `
       <td>
         <div style="font-weight: 500; display: flex; align-items: center; gap: 6px;">
           <span class="city-abbr-tag" style="padding: 1px 4px; font-size: 10px;">[${cityAbbr}]</span>
-          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;">${escapeHtml(lot.title)}</span>
+          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;">${escapeHtml(lot.title || '')}</span>
         </div>
-        <div class="caption">${escapeHtml(lot.seller.location)}</div>
+        <div class="caption">${escapeHtml(sellerLocation)}</div>
       </td>
       <td class="font-mono" style="font-weight: 600; white-space: nowrap;">
-        ${lot.price.toLocaleString('ru-RU')} ₽
+        ${(lot.price || 0).toLocaleString('ru-RU')} ₽
       </td>
       <td class="font-mono" style="color: var(--text-secondary); white-space: nowrap;">
         ${lot.marketPrice ? `${lot.marketPrice.toLocaleString('ru-RU')} ₽` : '—'}
@@ -1157,7 +1343,7 @@ function renderTableView(lots) {
         ${lot.discount ? `<span style="color: ${isDeal ? 'var(--success)' : 'var(--text-secondary)'}; font-weight: 600;">${diffSign}${lot.discount}%</span>` : '—'}
       </td>
       <td style="color: var(--text-secondary); max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-        ${escapeHtml(lot.seller.name)}
+        ${escapeHtml(sellerName)}
       </td>
       <td style="text-align: right; white-space: nowrap;">
         <button class="btn-vanish" onclick="window.app.vanishLot(event, '${lot.id}')" title="Скрыть">✕</button>
@@ -1425,7 +1611,9 @@ Object.assign(window.app, {
   confirmDelete: handleConfirmDelete,
   selectSearch,
   scanSearch,
-  setQueryPreset
+  setQueryPreset,
+  quickAddPreset,
+  applyQueryFilter
 });
 
 // ==========================================================================

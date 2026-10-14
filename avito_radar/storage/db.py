@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+import os
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -31,10 +32,15 @@ class SearchRecord:
     min_price: int | None = None
     max_price: int | None = None
     created_at: str = ""
+    user_id: str = ""
 
     def __post_init__(self) -> None:
         if not self.created_at:
             self.created_at = datetime.now().isoformat()
+        if self.user_id is not None:
+            self.user_id = str(self.user_id).strip()
+        else:
+            self.user_id = ""
 
     @property
     def folder(self) -> Path:
@@ -122,10 +128,12 @@ def load_search(name: str) -> SearchRecord | None:
     if not config_path.exists():
         return None
     data = load_json(config_path)
-    return SearchRecord(**data)
+    known_fields = {f.name for f in fields(SearchRecord)}
+    filtered_data = {k: v for k, v in data.items() if k in known_fields}
+    return SearchRecord(**filtered_data)
 
 
-def list_searches() -> list[SearchRecord]:
+def list_searches(user_id: str | int | None = None) -> list[SearchRecord]:
     ensure_dirs()
     if SEEDS_PATH.exists():
         try:
@@ -145,11 +153,36 @@ def list_searches() -> list[SearchRecord]:
             rec = load_search(p.name)
             if rec:
                 results.append(rec)
+
+    if user_id is not None:
+        uid_str = str(user_id).strip()
+        owner_id = str(os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
+
+        filtered = []
+        for r in results:
+            r_uid = str(r.user_id or "").strip()
+            # Direct match
+            if r_uid and r_uid == uid_str:
+                filtered.append(r)
+            # If request is from owner, also include legacy searches that had no user_id
+            elif uid_str and owner_id and uid_str == owner_id and r_uid in ("", "0", "None"):
+                filtered.append(r)
+        return filtered
+
     return results
 
 
-def delete_search(name: str) -> bool:
+def delete_search(name: str, user_id: str | int | None = None) -> bool:
     import shutil
+    rec = load_search(name)
+    if rec and user_id is not None:
+        uid_str = str(user_id).strip()
+        owner_id = str(os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
+        r_uid = str(rec.user_id or "").strip()
+        # Verify ownership unless admin/owner
+        if r_uid and r_uid != uid_str and not (owner_id and uid_str == owner_id):
+            return False
+
     folder = SEARCHES_DIR / name
     deleted = False
     if folder.exists():
