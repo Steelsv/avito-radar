@@ -574,7 +574,9 @@ function initDOM() {
     statMedianPrice: document.getElementById('statMedianPrice'),
     statDealsCount: document.getElementById('statDealsCount'),
     statTopDiscount: document.getElementById('statTopDiscount'),
-    statActiveRadars: document.getElementById('statActiveRadars')
+    statActiveRadars: document.getElementById('statActiveRadars'),
+    querySuggestionsDropdown: document.getElementById('querySuggestionsDropdown'),
+    filterSuggestionsDropdown: document.getElementById('filterSuggestionsDropdown')
   };
 }
 
@@ -694,6 +696,8 @@ function closeAllModals() {
   DOM.bottomSheet?.classList.remove('open');
   DOM.newSearchModal?.classList.remove('open');
   DOM.deleteModal?.classList.remove('open');
+  DOM.querySuggestionsDropdown?.classList.add('hidden');
+  DOM.filterSuggestionsDropdown?.classList.add('hidden');
   State.pendingDeleteId = null;
 }
 
@@ -1590,6 +1594,34 @@ function setupEventListeners() {
       setFilterChip(chip);
     });
   });
+
+  // Initialize smart autocomplete on new search modal input
+  const newQueryInput = document.getElementById('newQueryInput');
+  const queryDropdown = document.getElementById('querySuggestionsDropdown');
+  if (newQueryInput && queryDropdown && window.Suggestions) {
+    window.Suggestions.init(newQueryInput, queryDropdown, {
+      limit: 7,
+      onSelect: (item) => {
+        const minPriceInput = document.getElementById('newMinPriceInput');
+        if (minPriceInput && item.minPrice && (!minPriceInput.value || minPriceInput.value === '0')) {
+          minPriceInput.value = item.minPrice;
+        }
+        showToast(`Выбрано: ${item.title}`, 'info');
+      }
+    });
+  }
+
+  // Initialize smart autocomplete on feed filter input
+  const filterInput = document.getElementById('filterInput');
+  const filterDropdown = document.getElementById('filterSuggestionsDropdown');
+  if (filterInput && filterDropdown && window.Suggestions) {
+    window.Suggestions.init(filterInput, filterDropdown, {
+      limit: 6,
+      onSelect: (item) => {
+        applyQueryFilter(item.query);
+      }
+    });
+  }
 }
 
 // ==========================================================================

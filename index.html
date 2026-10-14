@@ -129,8 +129,9 @@
         <circle cx="11" cy="11" r="8"></circle>
         <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
       </svg>
-      <input type="text" id="filterInput" placeholder="Быстрый фильтр по ключевым словам, продавцу, адресу..." class="form-input" style="height: 36px; padding-left: 34px; padding-right: 32px; font-size: 12px;">
+      <input type="text" id="filterInput" placeholder="Быстрый фильтр по ключевым словам, продавцу, адресу..." class="form-input" style="height: 36px; padding-left: 34px; padding-right: 32px; font-size: 12px;" autocomplete="off">
       <button id="btnClearFilter" class="btn-vanish hidden" style="position: absolute; right: 4px; width: 28px; height: 28px; font-size: 12px;">✕</button>
+      <div id="filterSuggestionsDropdown" class="suggestions-dropdown hidden" style="top: 42px;"></div>
     </div>
 
     <!-- Chips Row -->
@@ -323,14 +324,18 @@
       </div>
 
       <form id="formNewSearch">
-        <div class="form-group">
-          <label class="form-label">Товар или поисковый запрос</label>
-          <input type="text" id="newQueryInput" placeholder="Например: RTX 4070, RX 6700 XT, PlayStation 5" class="form-input" required>
+        <div class="form-group" style="position: relative;">
+          <label class="form-label">Товар или поисковый запрос (с подсказками моделей и комплектаций)</label>
+          <div style="position: relative;">
+            <input type="text" id="newQueryInput" placeholder="Например: BMW 3, Lada Vesta, Camry, iPhone 15, RTX 4070" class="form-input" required autocomplete="off">
+            <div id="querySuggestionsDropdown" class="suggestions-dropdown hidden"></div>
+          </div>
           <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
-            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('RX 6700 XT', 25000)">RX 6700 XT</button>
-            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('RTX 4070', 40000)">RTX 4070</button>
-            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('PlayStation 5', 30000)">PS 5</button>
-            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('iPhone 14', 35000)">iPhone 14</button>
+            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('Lada Vesta', 600000)">Lada Vesta</button>
+            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('BMW 320d', 1800000)">BMW 320d</button>
+            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('Toyota Camry', 1800000)">Camry</button>
+            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('iPhone 15', 55000)">iPhone 15</button>
+            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('RTX 4070', 45000)">RTX 4070</button>
           </div>
         </div>
 
@@ -377,6 +382,7 @@
   </div>
 
   <!-- Application Controller -->
-  <script src="js/app.js?v=7"></script>
+  <script src="js/suggestions.js?v=1"></script>
+  <script src="js/app.js?v=8"></script>
 </body>
 </html>

@@ -868,6 +868,49 @@ def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
     return bundle
 
 
+SUGGESTIONS_DB: list[dict[str, Any]] = [
+    {"title": "BMW 3 серии (G20) 320d xDrive M Sport", "query": "BMW 320d M Sport", "category": "auto", "meta": "2.0d (190 л.с.) • Полный привод xDrive • M Sport Pro", "minPrice": 2800000, "keywords": ["бмв", "bmw", "320", "320d", "g20", "m sport"]},
+    {"title": "BMW 5 серии (G30) 520d xDrive M Sport", "query": "BMW 520d M Sport", "category": "auto", "meta": "2.0d (190 л.с.) • M-пакет • Кожа Dakota", "minPrice": 3200000, "keywords": ["бмв", "bmw", "520", "520d", "g30", "m sport"]},
+    {"title": "BMW X5 (G05) xDrive30d M Sport Plus", "query": "BMW X5 G05 30d M Sport", "category": "auto", "meta": "3.0d (249 л.с.) • Пневмоподвеска • Колеса R21", "minPrice": 5500000, "keywords": ["бмв", "bmw", "x5", "g05", "30d", "m sport"]},
+    {"title": "Lada Vesta SW Cross 1.6 / 1.8 Luxe Prestige", "query": "Lada Vesta SW Cross Luxe", "category": "auto", "meta": "Универсал • Клиренс 203 мм • Luxe Prestige", "minPrice": 850000, "keywords": ["лада", "lada", "веста", "vesta", "sw cross", "luxe"]},
+    {"title": "Lada Vesta NG 1.6 Techno / Life", "query": "Lada Vesta NG Techno", "category": "auto", "meta": "Новое поколение NG • Экран 10.4\", цифровая приборка", "minPrice": 1100000, "keywords": ["лада", "lada", "веста", "vesta", "ng", "techno"]},
+    {"title": "Toyota Camry 2.5 (XV70) Elegance Safety", "query": "Toyota Camry 2.5 Elegance", "category": "auto", "meta": "2.5 (181 л.с.) • Автомат • Комплекс Toyota Safety Sense", "minPrice": 2200000, "keywords": ["тойота", "toyota", "камри", "camry", "xv70", "elegance"]},
+    {"title": "Toyota RAV4 2.0 / 2.5 (XA50) 4WD Comfort", "query": "Toyota RAV4 Comfort 4WD", "category": "auto", "meta": "Полный привод AWD • Зимний пакет, подогревы", "minPrice": 2400000, "keywords": ["тойота", "toyota", "рав4", "rav4", "comfort", "4wd"]},
+    {"title": "Toyota Land Cruiser 300 GR Sport", "query": "Toyota Land Cruiser 300 GR Sport", "category": "auto", "meta": "3.3D дизель (299 л.с.) • E-KDSS, блокировки", "minPrice": 8500000, "keywords": ["тойота", "toyota", "крузак", "land cruiser", "300", "gr sport"]},
+    {"title": "Mercedes-Benz E 200 / E 220 d (W213) AMG Line", "query": "Mercedes E 200 AMG Line W213", "category": "auto", "meta": "Бизнес-класс • AMG пакет, панорама, Widescreen Cockpit", "minPrice": 2800000, "keywords": ["мерседес", "mercedes", "е класс", "e 200", "w213", "amg"]},
+    {"title": "Mercedes-Benz G 63 AMG 4.0 V8 (W463)", "query": "Mercedes G 63 AMG", "category": "auto", "meta": "Гелендваген • V8 Biturbo (585 л.с.) • Выхлоп AMG", "minPrice": 13000000, "keywords": ["мерседес", "mercedes", "гелик", "g 63", "amg"]},
+    {"title": "Audi A4 (B9) 2.0 TFSI / TDI S Line quattro", "query": "Audi A4 B9 S Line quattro", "category": "auto", "meta": "Полный привод quattro • Virtual Cockpit, S Line", "minPrice": 2100000, "keywords": ["ауди", "audi", "а4", "a4", "b9", "s line", "quattro"]},
+    {"title": "Volkswagen Tiguan 2.0 TSI (180/220 л.с.) 4Motion R-Line", "query": "VW Tiguan 2.0 TSI R-Line", "category": "auto", "meta": "Спортивный обвес R-Line • Цифровая панель, панорама", "minPrice": 2300000, "keywords": ["фольксваген", "volkswagen", "тигуан", "tiguan", "r-line"]},
+    {"title": "Kia K5 2.5 (194 л.с.) GT Line / GT Line+", "query": "Kia K5 2.5 GT Line", "category": "auto", "meta": "Спортивный седан • Красная кожа, панорама, круговой обзор", "minPrice": 2200000, "keywords": ["киа", "kia", "к5", "k5", "gt line"]},
+    {"title": "Hyundai Solaris 1.6 Elegance / Comfort", "query": "Hyundai Solaris Elegance", "category": "auto", "meta": "Седан • Климат-контроль, линзованная оптика", "minPrice": 950000, "keywords": ["хендай", "hyundai", "солярис", "solaris", "elegance"]},
+    {"title": "Skoda Octavia (A8) 1.4 TSI / 2.0 TSI Style Plus", "query": "Skoda Octavia A8 Style", "category": "auto", "meta": "Лифтбек • Матричные фары, цифровая приборка, Canton", "minPrice": 2200000, "keywords": ["шкода", "skoda", "октавия", "octavia", "a8", "style"]},
+    {"title": "Geely Monjaro 2.0 4WD Exclusive / Flagship", "query": "Geely Monjaro Flagship", "category": "auto", "meta": "Премиум кроссовер 238 л.с. • 3 экрана, полный привод", "minPrice": 3200000, "keywords": ["джили", "geely", "монджаро", "monjaro", "flagship"]},
+    {"title": "Haval Jolion 1.5 4WD Premium / Tech Plus", "query": "Haval Jolion 4WD Premium", "category": "auto", "meta": "Полный привод • Адаптивный круиз, автопарковщик", "minPrice": 1700000, "keywords": ["хавал", "haval", "джолион", "jolion", "premium", "4wd"]},
+    {"title": "Tank 300 2.0 4WD City / Premium", "query": "Tank 300 Premium", "category": "auto", "meta": "Рамный внедорожник • Понижайка, блокировки перед/зад", "minPrice": 3200000, "keywords": ["танк", "tank", "300", "premium"]},
+    {"title": "iPhone 15 Pro Max 256GB / 512GB", "query": "iPhone 15 Pro Max 256GB", "category": "tech", "meta": "Титановый корпус • Чип Apple A17 Pro • Камера 5x", "minPrice": 85000, "keywords": ["айфон", "iphone", "15 pro max", "apple"]},
+    {"title": "iPhone 15 128GB", "query": "iPhone 15 128GB", "category": "tech", "meta": "Dynamic Island • Камера 48 Мп • USB-C", "minPrice": 55000, "keywords": ["айфон", "iphone", "15", "apple"]},
+    {"title": "PlayStation 5 Slim с дисководом 1TB", "query": "PlayStation 5 Slim 1TB", "category": "tech", "meta": "Новая ревизия Slim • 1TB SSD • Геймпад DualSense", "minPrice": 42000, "keywords": ["сони", "playstation", "ps5", "slim"]},
+    {"title": "NVIDIA GeForce RTX 4070 Super 12GB", "query": "RTX 4070 Super 12GB", "category": "tech", "meta": "GDDR6X 12GB • DLSS 3.5 Frame Generation", "minPrice": 55000, "keywords": ["видеокарта", "rtx", "4070 super", "nvidia"]},
+    {"title": "AMD Radeon RX 6700 XT 12GB", "query": "RX 6700 XT 12GB", "category": "tech", "meta": "12GB GDDR6 • Отличный выбор для 2K", "minPrice": 25000, "keywords": ["видеокарта", "rx", "6700 xt", "amd"]}
+]
+
+
+def get_query_suggestions(query: str, limit: int = 8) -> list[dict[str, Any]]:
+    q = (query or "").lower().strip()
+    if len(q) < 2:
+        return []
+    matches = []
+    for item in SUGGESTIONS_DB:
+        title = item["title"].lower()
+        q_item = item["query"].lower()
+        keywords = [k.lower() for k in item.get("keywords", [])]
+        if q in title or q in q_item or any(q in k or k in q for k in keywords):
+            matches.append(item)
+            if len(matches) >= limit:
+                break
+    return matches
+
+
 def start_healthcheck_server() -> None:
     port = int(os.environ.get("PORT", "7860"))
 
@@ -967,6 +1010,19 @@ def start_healthcheck_server() -> None:
                 self.end_headers()
                 self.wfile.write(b'{"status":"ok","service":"avitoradar-backend"}\n')
                 return
+
+            if path == "/api/suggest":
+                try:
+                    q = query_params.get("q", [""])[0].strip()
+                    suggestions = get_query_suggestions(q)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": True, "query": q, "suggestions": suggestions}, ensure_ascii=False).encode("utf-8"))
+                    return
+                except Exception as exc:
+                    logger.warning("Error getting suggestions: %s", exc)
 
             if path == "/api/searches":
                 try:
