@@ -139,6 +139,31 @@ function initTelegramBot() {
         });
       });
 
+      botInstance.onText(/\/avatar/, (msg) => {
+        const chatId = msg.chat.id;
+        const avatarPath = path.resolve(__dirname, '../../avatar.jpg');
+        const caption =
+          `🏛 <b>AVITO RADAR // ОФИЦИАЛЬНАЯ АВАТАРКА</b>\n\n` +
+          `<i>Новый стиль Heavy Loft & Quiet Luxury</i>\n\n` +
+          `• <b>Концепция:</b> Прецизионный хронометр-радар из темного титана со шкалой телеметрии цвета шампанского (#c5a059), сапфировой линзой и визиром.\n\n` +
+          `⚙️ <b>Как установить аватарку боту:</b>\n` +
+          `1. Откройте @BotFather\n` +
+          `2. Отправьте команду <code>/setuserpic</code>\n` +
+          `3. Выберите вашего бота <b>@Steelsv_bot</b>\n` +
+          `4. Отправьте это изображение как фото`;
+
+        if (fs.existsSync(avatarPath)) {
+          botInstance.sendPhoto(chatId, avatarPath, {
+            caption,
+            parse_mode: 'HTML'
+          }).catch(err => {
+            console.error('[TelegramBot] Failed to send avatar photo:', err.message);
+          });
+        } else {
+          botInstance.sendMessage(chatId, caption, { parse_mode: 'HTML' });
+        }
+      });
+
       botInstance.on('callback_query', async (query) => {
         const data = query.data || '';
         if (data.startsWith('vanish_')) {

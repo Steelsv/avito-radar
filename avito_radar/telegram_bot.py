@@ -539,6 +539,31 @@ class AvitoTelegramBot:
         }
         self.render_menu(chat_id, text, kb)
 
+    def send_avatar_message(self, chat_id: int) -> None:
+        avatar_file = Path("avatar.jpg")
+        caption = (
+            "🏛 <b>AVITO RADAR // ОФИЦИАЛЬНАЯ АВАТАРКА</b>\n\n"
+            "<i>Новый стиль Heavy Loft & Quiet Luxury</i>\n\n"
+            "• <b>Концепция:</b> Прецизионный хронометр-радар из темного титана со шкалой телеметрии цвета шампанского (#c5a059), сапфировой линзой и визиром.\n\n"
+            "⚙️ <b>Как установить аватарку боту:</b>\n"
+            "1. Откройте @BotFather\n"
+            "2. Отправьте <code>/setuserpic</code>\n"
+            "3. Выберите вашего бота\n"
+            "4. Отправьте эту картинку как фото"
+        )
+        if avatar_file.exists():
+            try:
+                with avatar_file.open("rb") as f:
+                    self.call_api(
+                        "sendPhoto",
+                        data={"chat_id": chat_id, "caption": caption, "parse_mode": "HTML"},
+                        files={"photo": (avatar_file.name, f, "image/jpeg")},
+                    )
+                return
+            except Exception as e:
+                logger.warning("Failed to send avatar photo: %s", e)
+        self.send_message(chat_id, caption)
+
     # --- Incoming Message & Callback Routers ---
 
     def handle_text_message(self, message: dict[str, Any]) -> None:
@@ -559,6 +584,12 @@ class AvitoTelegramBot:
         if text.startswith("/status"):
             session.state = "IDLE"
             self.send_status_message(chat_id)
+            return
+
+        # /avatar command
+        if text.startswith("/avatar"):
+            session.state = "IDLE"
+            self.send_avatar_message(chat_id)
             return
 
         # Direct Avito link detection (support quick adding via link if user pastes one)
