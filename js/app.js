@@ -247,8 +247,8 @@ const TelegramService = {
       if (typeof tg.exitFullscreen === 'function') {
         try { tg.exitFullscreen(); } catch (_) {}
       }
-      tg.headerColor = '#0A0A0B';
-      tg.backgroundColor = '#0A0A0B';
+      tg.headerColor = '#0E0F12';
+      tg.backgroundColor = '#0E0F12';
       if (tg.isVerticalSwipesEnabled !== undefined) {
         tg.isVerticalSwipesEnabled = true;
       }
@@ -261,7 +261,7 @@ const TelegramService = {
         if (top > 0) {
           document.documentElement.style.setProperty('--safe-area-top', `${top}px`);
         } else {
-          document.documentElement.style.setProperty('--safe-area-top', 'max(env(safe-area-inset-top, 0px), 16px)');
+          document.documentElement.style.setProperty('--safe-area-top', 'max(env(safe-area-inset-top, 0px), 24px)');
         }
 
         let bottom = 0;
@@ -289,6 +289,7 @@ const TelegramService = {
       if (type === 'light') tg.HapticFeedback.impactOccurred('light');
       else if (type === 'medium') tg.HapticFeedback.impactOccurred('medium');
       else if (type === 'heavy') tg.HapticFeedback.impactOccurred('heavy');
+      else if (type === 'selection') tg.HapticFeedback.selectionChanged();
       else if (type === 'success') tg.HapticFeedback.notificationOccurred('success');
       else if (type === 'warning') tg.HapticFeedback.notificationOccurred('warning');
       else if (type === 'error') tg.HapticFeedback.notificationOccurred('error');
@@ -853,13 +854,13 @@ function toggleFav(event, lotId) {
 
 async function vanishLot(event, lotId) {
   if (event) event.stopPropagation();
-  TelegramService.haptic('heavy');
+  TelegramService.haptic('warning');
   const card = document.querySelector(`.lot-card[data-id="${lotId}"]`);
-  if (card) {
-    card.classList.add('vanished');
+  if (card && !card.classList.contains('vanished-swipe')) {
+    card.classList.add('vanishing');
     setTimeout(() => {
       applyVanish(lotId);
-    }, 280);
+    }, 250);
   } else {
     applyVanish(lotId);
   }
@@ -999,6 +1000,9 @@ function applyQueryFilter(query) {
 // 9. Data Fetching & Sync
 // ==========================================================================
 async function loadData() {
+  if (State.lots.length === 0) {
+    renderSkeletonCards(4);
+  }
   try {
     const favKey = getUserStorageKey('favorites');
     const savedFavs = SafeStorage.getItem(favKey);
@@ -1337,8 +1341,110 @@ function renderEmptyState() {
 }
 
 // ==========================================================================
-// 10. Card View Rendering
+// 10. Card View Rendering, Skeletons & Mobile Swipes
 // ==========================================================================
+function renderSkeletonCards(count = 4) {
+  if (!DOM.lotsContainer) initDOM();
+  if (!DOM.lotsContainer) return;
+  DOM.lotsContainer.innerHTML = '';
+  for (let i = 0; i < count; i++) {
+    const card = document.createElement('div');
+    card.className = 'skeleton-card';
+    card.innerHTML = `
+      <div class="skeleton-shimmer skeleton-img"></div>
+      <div class="skeleton-header-row">
+        <div class="skeleton-shimmer skeleton-pill"></div>
+        <div class="skeleton-shimmer skeleton-pill" style="width: 24px; height: 24px; border-radius: 6px;"></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div class="skeleton-shimmer skeleton-title-1"></div>
+        <div class="skeleton-shimmer skeleton-title-2"></div>
+      </div>
+      <div class="skeleton-shimmer skeleton-price"></div>
+      <div class="skeleton-shimmer skeleton-meta"></div>
+      <div class="skeleton-shimmer skeleton-btn"></div>
+    `;
+    DOM.lotsContainer.appendChild(card);
+  }
+}
+
+function attachSwipeToCard(card, lot) {
+  let startX = 0;
+  let startY = 0;
+  let currentX = 0;
+  let isSwiping = false;
+  let isHorizontal = null;
+
+  card.addEventListener('touchstart', (e) => {
+    if (e.target.closest('button') || e.target.closest('a')) return;
+    const touch = e.touches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+    currentX = startX;
+    isSwiping = true;
+    isHorizontal = null;
+    card.style.transition = 'none';
+  }, { passive: true });
+
+  card.addEventListener('touchmove', (e) => {
+    if (!isSwiping) return;
+    const touch = e.touches[0];
+    currentX = touch.clientX;
+    const diffX = currentX - startX;
+    const diffY = touch.clientY - startY;
+
+    if (isHorizontal === null) {
+      if (Math.abs(diffX) > 8 || Math.abs(diffY) > 8) {
+        isHorizontal = Math.abs(diffX) > Math.abs(diffY);
+      }
+    }
+
+    if (!isHorizontal) return;
+
+    // Only allow swipe left (diffX < 0)
+    if (diffX < 0) {
+      if (e.cancelable) e.preventDefault();
+      card.style.transform = `translateX(${diffX}px)`;
+      const opacity = Math.max(0.3, 1 - Math.abs(diffX) / 280);
+      card.style.opacity = opacity;
+
+      // Haptic threshold trigger
+      if (diffX < -80 && !card.dataset.hapticFired) {
+        TelegramService.haptic('light');
+        card.dataset.hapticFired = 'true';
+      } else if (diffX >= -80 && card.dataset.hapticFired) {
+        delete card.dataset.hapticFired;
+      }
+    } else {
+      card.style.transform = 'translateX(0)';
+      card.style.opacity = '1';
+    }
+  }, { passive: false });
+
+  const endSwipe = () => {
+    if (!isSwiping) return;
+    isSwiping = false;
+    delete card.dataset.hapticFired;
+    const diffX = currentX - startX;
+
+    if (isHorizontal && diffX < -80) {
+      TelegramService.haptic('warning');
+      card.classList.add('vanished-swipe');
+      setTimeout(() => {
+        vanishLot(null, lot.id);
+      }, 240);
+    } else {
+      card.style.transition = 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms ease';
+      card.style.transform = 'translateX(0)';
+      card.style.opacity = '1';
+    }
+    isHorizontal = null;
+  };
+
+  card.addEventListener('touchend', endSwipe);
+  card.addEventListener('touchcancel', endSwipe);
+}
+
 function renderCardsView(lots) {
   if (!DOM.lotsContainer) return;
   DOM.lotsContainer.innerHTML = '';
@@ -1458,6 +1564,8 @@ function createLotCard(lot) {
     if (e.target.closest('button') || e.target.closest('a')) return;
     openLotModal(lot);
   });
+
+  attachSwipeToCard(card, lot);
 
   return card;
 }
@@ -1728,10 +1836,19 @@ function setupEventListeners() {
   // Refresh button
   DOM.btnRefresh?.addEventListener('click', async () => {
     TelegramService.haptic('medium');
-    DOM.btnRefresh.classList.add('animate-spin');
-    await loadData();
-    DOM.btnRefresh.classList.remove('animate-spin');
-    showToast('Данные синхронизированы', 'success');
+    const svg = DOM.btnRefresh.querySelector('svg');
+    if (svg) svg.classList.add('rotating');
+    showToast('Синхронизация с сервером...', 'info');
+    try {
+      if (State.currentSearchId && State.currentSearchId !== 'all') {
+        await scanSearch(State.currentSearchId);
+      } else {
+        await loadData();
+        showToast('Данные синхронизированы', 'success');
+      }
+    } finally {
+      if (svg) svg.classList.remove('rotating');
+    }
   });
 
   // Modal Backdrop Close

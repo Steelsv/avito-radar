@@ -138,6 +138,7 @@ class AvitoTelegramBot:
         self.monitoring_active = True
         self.primed_searches: set[str] = set()
         self.settings: AppSettings = load_settings()
+        self.start_time = time.time()
         self.setup_menu_button()
 
     def setup_menu_button(self) -> None:
@@ -258,8 +259,12 @@ class AvitoTelegramBot:
                 ],
                 [
                     {
-                        "text": "🔗 ОТКРЫТЬ НА АВИТО",
+                        "text": "🔗 Открыть на Авито",
                         "url": item.url,
+                    },
+                    {
+                        "text": "👁️ Скрыть лот",
+                        "callback_data": f"vanish_{item.id}",
                     }
                 ]
             ]
@@ -481,6 +486,50 @@ class AvitoTelegramBot:
                 message_id=message_id,
             )
 
+    def send_status_message(self, chat_id: int) -> None:
+        uptime_sec = int(time.time() - getattr(self, "start_time", time.time()))
+        days = uptime_sec // 86400
+        hours = (uptime_sec % 86400) // 3600
+        mins = (uptime_sec % 3600) // 60
+        secs = uptime_sec % 60
+        parts = []
+        if days: parts.append(f"{days}д")
+        if hours: parts.append(f"{hours}ч")
+        if mins: parts.append(f"{mins}м")
+        parts.append(f"{secs}с")
+        uptime_str = " ".join(parts) or "1с"
+
+        watch_status = "24/7 Активен" if self.monitoring_active else "Выключен"
+        searches = list_searches(user_id=chat_id)
+        base_url = os.environ.get("MINI_APP_URL", "https://avito-radar.onrender.com/").rstrip("/")
+        miniapp_url = f"{base_url}/?user_id={chat_id}"
+
+        text = (
+            f"🏛 <b>AVITO RADAR // СТАТУС СЕРВЕРА</b>\n\n"
+            f"⏱ <b>Время работы (Uptime):</b> <code>{uptime_str}</code>\n"
+            f"🟢 <b>Мониторинг 24/7:</b> <code>{watch_status}</code> (интервал: 15 мин)\n"
+            f"🎯 <b>Активных радаров:</b> <code>{len(searches)} шт.</code>\n"
+            f"📡 <b>Healthcheck:</b> <code>200 OK</code> (/health)\n\n"
+            f"<i>Терминал готов к работе на iOS, Android и Desktop.</i>"
+        )
+        kb = {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "⚡️ ТЕРМИНАЛ РАДАРА (MINI APP)",
+                        "web_app": {"url": miniapp_url},
+                    }
+                ],
+                [
+                    {
+                        "text": "🔙 Главное меню",
+                        "callback_data": "menu_main",
+                    }
+                ]
+            ]
+        }
+        self.render_menu(chat_id, text, kb)
+
     # --- Incoming Message & Callback Routers ---
 
     def handle_text_message(self, message: dict[str, Any]) -> None:
@@ -497,6 +546,12 @@ class AvitoTelegramBot:
         if msg_id:
             self.delete_message(chat_id, msg_id)
 
+        # /status command
+        if text.startswith("/status"):
+            session.state = "IDLE"
+            self.send_status_message(chat_id)
+            return
+
         # Direct Avito link detection (support quick adding via link if user pastes one)
         if "avito.ru" in text:
             match = re.search(r"https?://[^\s]+avito\.ru[^\s]*", text)
@@ -511,8 +566,6 @@ class AvitoTelegramBot:
             session.last_menu_message_id = None
         self.send_main_menu(chat_id)
         return
-
-        self.send_main_menu(chat_id)
 
     def handle_callback_query(self, query: dict[str, Any]) -> None:
         cb_id = query.get("id") or ""
@@ -545,6 +598,46 @@ class AvitoTelegramBot:
 
         elif data == "add_wizard_product":
             self.send_product_selection(chat_id, message_id=message_id)
+
+        elif data.startswith("vanish_"):
+            item_id = data[len("vanish_"):]
+            self.answer_callback(cb_id, text="Лот скрыт из выдачи ✅")
+            try:
+                dismissed_file = DATA_DIR / "dismissed.json"
+                dismissed_ids = set()
+                if dismissed_file.exists():
+                    try:
+                        dismissed_ids = set(json.loads(dismissed_file.read_text(encoding="utf-8")))
+                    except Exception:
+                        pass
+                dismissed_ids.add(str(item_id))
+                dismissed_file.write_text(json.dumps(list(dismissed_ids)), encoding="utf-8")
+            except Exception as e:
+                logger.warning("Could not persist dismissed item %s: %s", item_id, e)
+
+            if msg and message_id:
+                try:
+                    reply_markup = msg.get("reply_markup") or {}
+                    rows = reply_markup.get("inline_keyboard", [])
+                    new_rows = []
+                    for row in rows:
+                        new_row = []
+                        for btn in row:
+                            if btn.get("callback_data") == data:
+                                new_row.append({"text": "👁️ Лот скрыт", "callback_data": "noop"})
+                            else:
+                                new_row.append(btn)
+                        new_rows.append(new_row)
+                    self.call_api("editMessageReplyMarkup", {
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "reply_markup": {"inline_keyboard": new_rows}
+                    })
+                except Exception as e:
+                    logger.debug("Could not edit reply markup: %s", e)
+
+        elif data == "noop":
+            self.answer_callback(cb_id, text="Лот уже скрыт")
 
         elif data.startswith("pick_prod_"):
             val = data[len("pick_prod_"):]

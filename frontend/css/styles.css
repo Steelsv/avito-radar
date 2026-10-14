@@ -1170,3 +1170,120 @@ h3, .h3 {
   background: var(--success);
   color: #0e0f12;
 }
+
+/* ==========================================================================
+   Spin Animation (For Sync / Refresh Button)
+   ========================================================================== */
+.rotating {
+  animation: spinIcon 0.8s linear infinite;
+}
+
+@keyframes spinIcon {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   Mobile Swiping & Vanish Gestures
+   ========================================================================== */
+.lot-card {
+  touch-action: pan-y;
+  will-change: transform, opacity;
+}
+
+.lot-card.vanished-swipe {
+  transition: transform 260ms ease-out, opacity 260ms ease-out, max-height 260ms ease-out, margin 260ms ease-out, padding 260ms ease-out !important;
+  transform: translateX(-110%) scale(0.9) !important;
+  opacity: 0 !important;
+  max-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   Skeleton Shimmer Loading Component (Heavy Loft Palette)
+   ========================================================================== */
+.skeleton-card {
+  position: relative;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  margin: 0 auto;
+  max-width: 380px;
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background: #18191e;
+  border-radius: 6px;
+}
+
+.skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%);
+  animation: skeletonShimmer 1.4s infinite;
+}
+
+@keyframes skeletonShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.skeleton-img {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  max-height: 200px;
+  border-radius: 10px;
+}
+
+.skeleton-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.skeleton-pill {
+  width: 64px;
+  height: 20px;
+  border-radius: 5px;
+}
+
+.skeleton-title-1 {
+  width: 90%;
+  height: 16px;
+}
+
+.skeleton-title-2 {
+  width: 60%;
+  height: 16px;
+}
+
+.skeleton-price {
+  width: 120px;
+  height: 24px;
+}
+
+.skeleton-meta {
+  width: 100%;
+  height: 14px;
+}
+
+.skeleton-btn {
+  width: 100%;
+  height: 40px;
+  border-radius: 9px;
+}
+

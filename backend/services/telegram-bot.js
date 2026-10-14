@@ -67,19 +67,18 @@ function initTelegramBot() {
 
     console.log(`[TelegramBot] Initialized with token prefix: ${token.substring(0, 10)}... (polling=${isPolling})`);
 
-    const miniappUrl = process.env.MINI_APP_URL || 'https://steelsv.github.io/avito-radar/';
+    const miniappUrl = process.env.MINI_APP_URL || 'https://avito-radar.onrender.com/';
 
     if (isPolling) {
       botInstance.onText(/\/start/, (msg) => {
         const chatId = msg.chat.id;
         const welcomeText = 
-          `${tgEmoji(TG_EMOJI.RADAR, '👁')} <b>СМОТРЯЩИЙ ЗА АВИТО // RADAR TERMINAL</b>\n\n` +
-          `${tgEmoji(TG_EMOJI.LIGHTNING, '⚡')} <b>Интерактивный терминал готов к работе:</b>\n` +
-          `• ${tgEmoji(TG_EMOJI.SEARCH, '🔎')} Менеджер поисков: создание и удаление любых радаров\n` +
-          `• ${tgEmoji(TG_EMOJI.RADAR, '👁')} Функция <b>Vanish</b>: скрытие нерелевантных объявлений в 1 тап\n` +
-          `• ${tgEmoji(TG_EMOJI.SHIELD, '🛡')} Карточки с фильтрацией дефектов и байт-цен\n` +
-          `• ${tgEmoji(TG_EMOJI.GROWTH, '📈')} Встроенная таблица (замена Excel на iPhone)\n\n` +
-          `<i>В этот чат приходят только мгновенные алерты о супер-ценах.</i>\n\n` +
+          `🏛 <b>AVITO RADAR // TERMINAL</b>\n\n` +
+          `<i>Премиальный мониторинг выгодных предложений</i>\n\n` +
+          `• Поиск товаров и авто с автодополнением\n` +
+          `• Функция Vanish: скрытие объявлений в 1 тап и свайпом влево\n` +
+          `• Фильтрация дефектов и байт-цен (100 ₽)\n` +
+          `• Встроенная интерактивная таблица прямо в Telegram\n\n` +
           `Нажмите кнопку ниже, чтобы открыть терминал 👇`;
 
         botInstance.sendMessage(chatId, welcomeText, {
@@ -88,14 +87,93 @@ function initTelegramBot() {
             inline_keyboard: [
               [
                 {
-                  text: 'ОТКРЫТЬ ТЕРМИНАЛ (MINI APP)',
-                  web_app: { url: miniappUrl },
-                  icon_custom_emoji_id: TG_EMOJI.LIGHTNING
+                  text: '⚡️ ТЕРМИНАЛ РАДАРА (MINI APP)',
+                  web_app: { url: miniappUrl }
                 }
               ]
             ]
           }
         });
+      });
+
+      botInstance.onText(/\/status/, (msg) => {
+        const chatId = msg.chat.id;
+        const uptimeSec = Math.floor(process.uptime());
+        const days = Math.floor(uptimeSec / 86400);
+        const hours = Math.floor((uptimeSec % 86400) / 3600);
+        const mins = Math.floor((uptimeSec % 3600) / 60);
+        const secs = uptimeSec % 60;
+        const parts = [];
+        if (days) parts.push(`${days}д`);
+        if (hours) parts.push(`${hours}ч`);
+        if (mins) parts.push(`${mins}м`);
+        parts.push(`${secs}с`);
+        const uptimeStr = parts.join(' ') || '1с';
+
+        const SearchModel = require('../models/Search');
+        const LotModel = require('../models/Lot');
+        const searches = SearchModel.getAll();
+        const lots = LotModel.getAll();
+
+        const statusText =
+          `🏛 <b>AVITO RADAR // СТАТУС СЕРВЕРА</b>\n\n` +
+          `⏱ <b>Время работы (Uptime):</b> <code>${uptimeStr}</code>\n` +
+          `🟢 <b>Мониторинг 24/7:</b> <code>Активен</code> (каждые 3 мин)\n` +
+          `🎯 <b>Активных радаров:</b> <code>${searches.length} шт.</code>\n` +
+          `📦 <b>Объявлений в базе:</b> <code>${lots.length} шт.</code>\n` +
+          `📡 <b>Healthcheck:</b> <code>200 OK</code> (/health)\n\n` +
+          `<i>Терминал готов к работе на iOS, Android и Desktop.</i>`;
+
+        botInstance.sendMessage(chatId, statusText, {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: '⚡️ ТЕРМИНАЛ РАДАРА (MINI APP)',
+                  web_app: { url: miniappUrl }
+                }
+              ]
+            ]
+          }
+        });
+      });
+
+      botInstance.on('callback_query', async (query) => {
+        const data = query.data || '';
+        if (data.startsWith('vanish_')) {
+          const lotId = data.replace('vanish_', '');
+          const LotModel = require('../models/Lot');
+          LotModel.dismiss(lotId);
+          try {
+            await botInstance.answerCallbackQuery(query.id, {
+              text: 'Лот скрыт из выдачи ✅',
+              show_alert: false
+            });
+            if (query.message) {
+              const currentMarkup = query.message.reply_markup || {};
+              const rows = currentMarkup.inline_keyboard || [];
+              const updatedRows = rows.map(row =>
+                row.map(btn => {
+                  if (btn.callback_data === data) {
+                    return { text: '👁️ Лот скрыт', callback_data: 'noop' };
+                  }
+                  return btn;
+                })
+              );
+              await botInstance.editMessageReplyMarkup(
+                { inline_keyboard: updatedRows },
+                { chat_id: query.message.chat.id, message_id: query.message.message_id }
+              );
+            }
+          } catch (e) {
+            console.warn('[TelegramBot] Callback vanish error:', e.message);
+          }
+        } else if (data === 'noop') {
+          try {
+            await botInstance.answerCallbackQuery(query.id, { text: 'Лот уже скрыт', show_alert: false });
+          } catch (_) {}
+        }
       });
     }
 
@@ -111,7 +189,7 @@ async function sendDealAlert(chatId, lot) {
   if (!token) return false;
 
   const targetId = chatId || targetChatId || '1492667315';
-  const miniappUrl = process.env.MINI_APP_URL || 'https://steelsv.github.io/avito-radar/';
+  const miniappUrl = process.env.MINI_APP_URL || 'https://avito-radar.onrender.com/';
 
   const eGrowth = tgEmoji(TG_EMOJI.GROWTH, '📈');
   const eCoin = tgEmoji(TG_EMOJI.COIN, '🪙');
@@ -137,14 +215,18 @@ async function sendDealAlert(chatId, lot) {
     inline_keyboard: [
       [
         {
-          text: 'Открыть в терминале',
-          web_app: { url: miniappUrl },
-          icon_custom_emoji_id: TG_EMOJI.LIGHTNING
+          text: '⚡️ ТЕРМИНАЛ РАДАРА (MINI APP)',
+          web_app: { url: miniappUrl }
+        }
+      ],
+      [
+        {
+          text: '🔗 Открыть на Авито',
+          url: lot.avitoUrl
         },
         {
-          text: 'На Авито',
-          url: lot.avitoUrl,
-          icon_custom_emoji_id: TG_EMOJI.LINK
+          text: '👁️ Скрыть лот',
+          callback_data: `vanish_${lot.id}`
         }
       ]
     ]
