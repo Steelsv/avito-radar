@@ -1314,17 +1314,29 @@ function populateSearchSelector() {
   if (!DOM.searchSelector) return;
   DOM.searchSelector.innerHTML = '';
 
+  const headerBtn = document.getElementById('btnHeaderNewSearch');
+
   if (State.searches.length === 0) {
+    State.currentSearchId = '';
     const opt = document.createElement('option');
     opt.value = '';
-    opt.textContent = 'Нет активных радаров';
+    opt.textContent = '✨ Нажмите «Новый поиск»';
     DOM.searchSelector.appendChild(opt);
+    if (headerBtn) headerBtn.classList.add('pulse-hero-subtle');
     return;
+  }
+
+  if (headerBtn) headerBtn.classList.remove('pulse-hero-subtle');
+
+  // If currentSearchId is empty or not in searches (and not 'all'), reset to 'all'
+  if (!State.currentSearchId || (State.currentSearchId !== 'all' && !State.searches.some(s => s.id === State.currentSearchId))) {
+    State.currentSearchId = 'all';
   }
 
   const allOpt = document.createElement('option');
   allOpt.value = 'all';
   allOpt.textContent = 'Все радары (общий поток)';
+  if (State.currentSearchId === 'all') allOpt.selected = true;
   DOM.searchSelector.appendChild(allOpt);
 
   State.searches.forEach(s => {
@@ -1559,35 +1571,39 @@ function renderEmptyState() {
 
   if (State.searches.length === 0) {
     DOM.emptyState.innerHTML = `
-      <div class="onboarding-card" style="text-align: center; padding: 28px 16px; background: var(--surface-card); border-radius: 16px; border: 1px solid var(--border-subtle); max-width: 480px; margin: 10px auto;">
-        <div class="radar-logo" style="width: 52px; height: 52px; margin: 0 auto 16px; border-radius: 12px;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <div class="onboarding-card" style="text-align: center; padding: 32px 20px; background: var(--surface-card); border-radius: 18px; border: 1px solid var(--border-subtle); max-width: 480px; margin: 12px auto; box-shadow: var(--shadow-card);">
+        <div class="radar-logo" style="width: 58px; height: 58px; margin: 0 auto 16px; border-radius: 14px; background: rgba(197, 160, 89, 0.1); border: 1px solid rgba(197, 160, 89, 0.3);">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="9"/>
             <path d="M12 3v18M3 12h18"/>
             <circle cx="12" cy="12" r="3"/>
           </svg>
         </div>
-        <div class="h3" style="font-size: 17px; margin-bottom: 8px;">Терминал мониторинга Avito</div>
-        <p class="caption" style="font-size: 13px; line-height: 1.5; margin-bottom: 20px; color: var(--text-secondary);">
-          Создайте свой первый радар для отслеживания выгодных предложений на Авито. Мы проверяем обновления 24/7 и присылаем лучшие цены.
+        <div class="h3" style="font-size: 19px; margin-bottom: 8px; font-weight: 700; letter-spacing: -0.01em;">Радары пока не настроены</div>
+        <p class="caption" style="font-size: 13px; line-height: 1.55; margin-bottom: 22px; color: var(--text-secondary); max-width: 380px; margin-inline: auto;">
+          Добавьте товар для мониторинга или выберите быстрый пресет ниже. Бот круглосуточно сканирует Авито и перехватывает выгодные предложения.
         </p>
 
-        <div style="margin-bottom: 20px;">
-          <div style="font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 10px;">
-            Популярные категории:
+        <button class="btn-cta-hero" onclick="window.app.openNewSearchModal()" style="margin-bottom: 24px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>Создать новый радар</span>
+        </button>
+
+        <div style="padding-top: 16px; border-top: 1px solid var(--border-subtle);">
+          <div style="font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 12px;">
+            Быстрый старт в 1 клик:
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
-            <button class="filter-chip" onclick="window.app.quickAddPreset('iPhone 15', 'chelyabinsk', 40000)" style="font-size: 12px; height: 34px;">iPhone 15</button>
-            <button class="filter-chip" onclick="window.app.quickAddPreset('RTX 4070', 'chelyabinsk', 35000)" style="font-size: 12px; height: 34px;">RTX 4070</button>
-            <button class="filter-chip" onclick="window.app.quickAddPreset('PlayStation 5', 'chelyabinsk', 25000)" style="font-size: 12px; height: 34px;">PS5</button>
-            <button class="filter-chip" onclick="window.app.quickAddPreset('DDR5 32GB', 'rossiya', 8000)" style="font-size: 12px; height: 34px;">DDR5 32GB</button>
+            <button class="filter-chip" onclick="window.app.quickAddPreset('iPhone 15', 'chelyabinsk', 40000)" style="font-size: 12px; height: 34px;">📱 iPhone 15</button>
+            <button class="filter-chip" onclick="window.app.quickAddPreset('RTX 4070', 'chelyabinsk', 35000)" style="font-size: 12px; height: 34px;">🎮 RTX 4070</button>
+            <button class="filter-chip" onclick="window.app.quickAddPreset('PlayStation 5', 'chelyabinsk', 25000)" style="font-size: 12px; height: 34px;">🕹️ PS5</button>
+            <button class="filter-chip" onclick="window.app.quickAddPreset('Гравел', 'chelyabinsk', 30000)" style="font-size: 12px; height: 34px;">🚲 Гравел</button>
+            <button class="filter-chip" onclick="window.app.quickAddPreset('DDR5 32GB', 'rossiya', 8000)" style="font-size: 12px; height: 34px;">⚡ DDR5 32GB</button>
           </div>
         </div>
-
-        <button class="btn-cta" onclick="window.app.openNewSearchModal()" style="max-width: 260px; margin: 0 auto; height: 42px; font-size: 13px;">
-          <span>+</span>
-          <span>Настроить свой поиск</span>
-        </button>
       </div>
     `;
     return;
@@ -2154,9 +2170,19 @@ function setupEventListeners() {
   // Search selector change
   DOM.searchSelector?.addEventListener('change', (e) => {
     TelegramService.haptic('light');
+    if (!e.target.value) {
+      openNewSearchModal();
+      return;
+    }
     State.currentSearchId = e.target.value;
     updateDeleteCurrentButtonVisibility();
     renderView();
+  });
+
+  DOM.searchSelector?.addEventListener('click', () => {
+    if (State.searches.length === 0) {
+      openNewSearchModal();
+    }
   });
 
   // Keyword input filter

@@ -699,6 +699,63 @@ h3, .h3 {
   transform: scale(0.985);
 }
 
+/* Hero CTA Button (Eye-catching Brass Glow for Empty State) */
+.btn-cta-hero {
+  height: 48px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, #dfbc74 0%, #c5a059 50%, #9e7930 100%);
+  color: #0c0d10;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 180ms ease;
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+  box-shadow: 0 4px 20px rgba(197, 160, 89, 0.4), 0 0 0 1px rgba(197, 160, 89, 0.3);
+  animation: pulse-hero 2.4s infinite ease-in-out;
+}
+
+.btn-cta-hero:hover {
+  filter: brightness(1.12);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 26px rgba(197, 160, 89, 0.6), 0 0 0 2px rgba(223, 188, 116, 0.5);
+}
+
+.btn-cta-hero:active {
+  transform: scale(0.98);
+}
+
+.pulse-hero-subtle {
+  animation: pulse-subtle 2s infinite ease-in-out !important;
+}
+
+@keyframes pulse-hero {
+  0%, 100% {
+    box-shadow: 0 4px 18px rgba(197, 160, 89, 0.35), 0 0 0 0 rgba(197, 160, 89, 0.45);
+  }
+  50% {
+    box-shadow: 0 6px 28px rgba(197, 160, 89, 0.6), 0 0 0 6px rgba(197, 160, 89, 0);
+  }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% {
+    box-shadow: 0 2px 10px rgba(197, 160, 89, 0.3), 0 0 0 0 rgba(197, 160, 89, 0.4);
+  }
+  50% {
+    box-shadow: 0 4px 18px rgba(197, 160, 89, 0.55), 0 0 0 4px rgba(197, 160, 89, 0);
+  }
+}
+
+
 /* ==========================================================================
    Table View (Excel replacement)
    ========================================================================== */

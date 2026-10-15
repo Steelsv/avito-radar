@@ -61,7 +61,7 @@
         <span style="font-weight: 600;">Поиски</span>
       </button>
 
-      <button class="btn-cta" onclick="window.app.openNewSearchModal()" style="height: 36px; padding: 0 14px; border-radius: 18px; font-size: 12px; width: auto;">
+      <button id="btnHeaderNewSearch" class="btn-cta" onclick="window.app.openNewSearchModal()" style="height: 36px; padding: 0 14px; border-radius: 18px; font-size: 12px; width: auto;">
         <span>+</span>
         <span>Новый поиск</span>
       </button>
@@ -82,7 +82,7 @@
     <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
       <div style="flex: 1; display: flex; align-items: center; gap: 6px;">
         <select id="searchSelector" class="form-select" style="height: 38px; font-size: 12px; font-weight: 600; padding: 0 10px; flex: 1;">
-          <option value="all">Все радары (общий поток)</option>
+          <option value="">✨ Нажмите «Новый поиск»</option>
         </select>
         <button id="btnDeleteCurrentSearch" class="btn-delete-search hidden" onclick="window.app.promptDeleteCurrent()" title="Удалить выбранный радар">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

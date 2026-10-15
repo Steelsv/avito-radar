@@ -69,50 +69,6 @@ class SearchModel {
         console.error('[SearchModel] Error scanning searches folder:', err.message);
       }
     }
-
-    // Default initial searches if empty
-    if (this.searches.size === 0) {
-      const initial = [
-        {
-          id: 'rx6700_xt_chelyabinsk',
-          userId: 'default_user',
-          query: 'RX 6700 XT',
-          city: 'chelyabinsk',
-          minPrice: 20000,
-          maxPrice: 0,
-          filters: { onlyProfit: false, privateSellers: false, withDelivery: false, noDefects: true },
-          isActive: true,
-          createdAt: Date.now(),
-          lastCheckedAt: Date.now()
-        },
-        {
-          id: 'rtx4050_chelyabinsk',
-          userId: 'default_user',
-          query: 'Ноутбук RTX 4050',
-          city: 'chelyabinsk',
-          minPrice: 40000,
-          maxPrice: 0,
-          filters: { onlyProfit: false, privateSellers: false, withDelivery: false, noDefects: true },
-          isActive: true,
-          createdAt: Date.now(),
-          lastCheckedAt: Date.now()
-        },
-        {
-          id: 'rtx_4070_chelyabinsk',
-          userId: 'default_user',
-          query: 'RTX 4070',
-          city: 'chelyabinsk',
-          minPrice: 35000,
-          maxPrice: 0,
-          filters: { onlyProfit: false, privateSellers: false, withDelivery: false, noDefects: true },
-          isActive: true,
-          createdAt: Date.now(),
-          lastCheckedAt: Date.now()
-        }
-      ];
-      initial.forEach(s => this.searches.set(s.id, s));
-      this.saveToDisk();
-    }
   }
 
   saveToDisk() {
@@ -176,6 +132,23 @@ class SearchModel {
           fs.rmSync(folder, { recursive: true, force: true });
         } catch (_) {}
       }
+
+      // Also clean seeds files if present
+      [
+        path.resolve(__dirname, '../../searches_seeds.json'),
+        path.resolve(__dirname, '../../frontend/searches_seeds.json')
+      ].forEach(seedPath => {
+        if (fs.existsSync(seedPath)) {
+          try {
+            const seeds = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+            if (seeds[id]) {
+              delete seeds[id];
+              fs.writeFileSync(seedPath, JSON.stringify(seeds, null, 2), 'utf-8');
+            }
+          } catch (_) {}
+        }
+      });
+
       return true;
     }
     return false;
