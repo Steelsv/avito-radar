@@ -56,6 +56,10 @@ class ParsedItem:
     is_combo_listing: bool = False
     is_accessory: bool = False
     is_mismatched_model: bool = False
+    is_defect: bool = False
+    defect_type: str | None = None
+    is_exchange_or_wtb: bool = False
+    is_in_desc_or_list: bool = False
     tags: list[str] = field(default_factory=list)
 
 

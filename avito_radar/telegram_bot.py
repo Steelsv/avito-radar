@@ -1024,6 +1024,10 @@ def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
                     "market_diff_percent": it.market_diff_percent,
                     "real_price_in_desc": it.real_price_in_desc,
                     "is_combo_listing": it.is_combo_listing,
+                    "is_in_desc_or_list": getattr(it, "is_in_desc_or_list", False),
+                    "is_defect": getattr(it, "is_defect", False),
+                    "defect_type": getattr(it, "defect_type", None),
+                    "is_exchange_or_wtb": getattr(it, "is_exchange_or_wtb", False),
                     "is_accessory": getattr(it, "is_accessory", False),
                     "is_mismatched_model": getattr(it, "is_mismatched_model", False),
                     "url": it.url,
@@ -1278,6 +1282,12 @@ def start_healthcheck_server() -> None:
                                 "tags": it.get("tags", []),
                                 "badges": it.get("badges", []),
                                 "isComboListing": it.get("is_combo_listing", False),
+                                "isInDescOrList": it.get("is_in_desc_or_list", False),
+                                "isDefect": it.get("is_defect", False),
+                                "defectType": it.get("defect_type"),
+                                "isExchangeOrWtb": it.get("is_exchange_or_wtb", False),
+                                "isAccessory": it.get("is_accessory", False),
+                                "isMismatchedModel": it.get("is_mismatched_model", False),
                                 "realPriceInDesc": it.get("real_price_in_desc"),
                                 "isDismissed": False
                             })

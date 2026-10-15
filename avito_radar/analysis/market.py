@@ -82,7 +82,8 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
     all_prices: list[int] = []
 
     for item in items:
-        if not item.price:
+        # Strictly exclude defects and exchanges from market median
+        if getattr(item, "is_defect", False) or getattr(item, "is_exchange_or_wtb", False):
             continue
 
         # If real price in description was identified, use it for genuine median calculation
@@ -97,6 +98,9 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
         if getattr(item, "is_accessory", False) or getattr(item, "is_mismatched_model", False) or is_likely_fake_or_junk(item):
             continue
 
+        if not item.price:
+            continue
+
         all_prices.append(item.price)
         key = group_key_fn(item) if group_key_fn else "all"
         groups.setdefault(key, []).append(item.price)
@@ -104,7 +108,9 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
     # Fallback to all valid prices if filter removed everything
     if not all_prices:
         for item in items:
-            if item.price and item.price > 0 and not getattr(item, "is_mismatched_model", False):
+            if getattr(item, "is_defect", False) or getattr(item, "is_exchange_or_wtb", False):
+                continue
+            if item.price and item.price >= 500 and not getattr(item, "is_mismatched_model", False):
                 all_prices.append(item.price)
                 key = group_key_fn(item) if group_key_fn else "all"
                 groups.setdefault(key, []).append(item.price)
@@ -125,15 +131,48 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
             item.market_diff_percent = None
             continue
 
+        if getattr(item, "is_exchange_or_wtb", False):
+            item.market_price = None
+            item.market_diff_percent = None
+            continue
+
         key = group_key_fn(item) if group_key_fn else "all"
         stats = stats_map.get(key) or stats_map.get("_overall")
-        if stats and item.price:
+        if not stats:
+            continue
+
+        # If defective (e.g. iCloud lock):
+        # Keep market_price for reference of working item cost, but never calculate false deal diff
+        if getattr(item, "is_defect", False):
+            item.market_price = stats.median_price
+            item.market_diff_percent = None
+            continue
+
+        # If combo listing:
+        # If real price in desc is known, compare against real price!
+        real_p = getattr(item, "real_price_in_desc", None)
+        if getattr(item, "is_combo_listing", False):
+            item.market_price = stats.median_price
+            if real_p and real_p >= 1000:
+                diff = (real_p - stats.median_price) / stats.median_price * 100
+                item.market_diff_percent = round(diff, 1)
+                if diff <= -15 and not getattr(item, "is_accessory", False):
+                    item.tags.append(f"🔥 Выгодно ({item.market_diff_percent}%)")
+                elif diff >= 25:
+                    item.tags.append(f"📈 Выше рынка (+{item.market_diff_percent}%)")
+            else:
+                # Bait price with unknown model price: do not calculate false diff!
+                item.market_diff_percent = None
+            continue
+
+        # Normal working standalone item
+        if item.price:
             item.market_price = stats.median_price
             diff = (item.price - stats.median_price) / stats.median_price * 100
             item.market_diff_percent = round(diff, 1)
 
-            # Do not tag combo / bait, accessory, or mismatched listings as deals
-            if not getattr(item, "is_combo_listing", False) and not getattr(item, "is_accessory", False):
+            # Do not tag accessory listings as deals
+            if not getattr(item, "is_accessory", False):
                 if diff <= -50:
                     item.tags.append(f"🔥 Супер-цена / Проверить лот ({item.market_diff_percent}%)")
                 elif diff <= -15:

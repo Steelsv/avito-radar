@@ -549,4 +549,209 @@ def test_iphone_15_128_esim_vs_broad_iphone_15():
     assert is_item_matching_search(item_old_13_pro[0], item_old_13_pro[1], broad_query) is False  # generation mismatch
 
 
+def test_icloud_defect_segregation_and_median():
+    """Verify that an iCloud-locked iPhone is flagged as defect and excluded from depressing market median."""
+    from avito_radar.notifications.telegram import format_ad_message
+
+    def make_iphone(pid: int, title: str, price: int, desc: str):
+        return ParsedItem(
+            id=pid,
+            title=title,
+            price=price,
+            price_formatted=f"{price:,} ₽".replace(",", " "),
+            url=f"https://www.avito.ru/{pid}",
+            address="Москва",
+            metro="",
+            city="moskva",
+            published_text="сегодня",
+            sort_timestamp=None,
+            seller_name="Продавец",
+            seller_type="частное лицо",
+            seller_rating=5.0,
+            closed_listings=3,
+            badges=(),
+            images=[],
+            description=desc,
+            phone_available=True,
+        )
+
+    locked_item = make_iphone(101, "iPhone 15, 128 ГБ", 20000, "Телефон в идеале внешне, но iCloud заблокирован, продается на запчасти или под байпас.")
+    working1 = make_iphone(102, "iPhone 15, 128 ГБ", 60000, "Отличное состояние, полный комплект, все функции работают.")
+    working2 = make_iphone(103, "iPhone 15, 128 ГБ", 62000, "Идеальное состояние, АКБ 100%, без ремонтов.")
+    working3 = make_iphone(104, "iPhone 15, 128 ГБ", 59000, "Хорошее состояние, чек, коробка.")
+
+    classify_item(locked_item, category_type="goods", search_query="iphone 15")
+    classify_item(working1, category_type="goods", search_query="iphone 15")
+    classify_item(working2, category_type="goods", search_query="iphone 15")
+    classify_item(working3, category_type="goods", search_query="iphone 15")
+
+    # 1. Defect flags
+    assert locked_item.is_defect is True
+    assert locked_item.defect_type == "icloud"
+    assert any("iCloud" in t for t in locked_item.tags)
+    assert working1.is_defect is False
+
+    # 2. Annotate market prices
+    items = [locked_item, working1, working2, working3]
+    annotate_market_prices(items)
+
+    # 3. Market median must be around ~60 000 ₽ for working phones, NOT depressed by the 20 000 ₽ locked item
+    assert working1.market_price == 60000
+    assert working1.market_diff_percent == 0.0  # (60000 - 60000) / 60000 = 0% (NOT +73% higher!)
+
+    # 4. Locked item must NOT get a false super-deal discount
+    assert locked_item.market_diff_percent is None
+    assert not any("Супер-цена" in t for t in locked_item.tags)
+    assert not any("Выгодно" in t for t in locked_item.tags)
+
+    # 5. Telegram alert for locked item must warn about iCloud, not say "НАЙДЕН ВЫГОДНЫЙ ЛОТ"
+    alert_msg = format_ad_message("iphone 15", locked_item)
+    assert "ICLOUD ЗАБЛОКИРОВАН" in alert_msg
+    assert "НАЙДЕН ВЫГОДНЫЙ ЛОТ" not in alert_msg
+
+
+def test_exchange_wtb_detection_and_median_exclusion():
+    """Verify that exchange/trade listings are detected, excluded from median, and don't distort pricing."""
+    item_exchange = ParsedItem(
+        id=201,
+        title="Обменяю R5 5600 на R7 5700X с доплатой",
+        price=100,
+        price_formatted="100 ₽",
+        url="https://www.avito.ru/201",
+        address="Челябинск",
+        metro="",
+        city="chelyabinsk",
+        published_text="сегодня",
+        sort_timestamp=None,
+        seller_name="Продавец",
+        seller_type="частное лицо",
+        seller_rating=5.0,
+        closed_listings=2,
+        badges=(),
+        images=[],
+        description="Хочу обменять свой процессор Ryzen 5 5600 на R7 5700x с моей доплатой. Не продаю, только обмен!",
+        phone_available=True,
+    )
+    def make_cpu(pid: int, price: int):
+        return ParsedItem(
+            id=pid,
+            title="Процессор AMD Ryzen 7 5700X",
+            price=price,
+            price_formatted=f"{price:,} ₽".replace(",", " "),
+            url=f"https://www.avito.ru/{pid}",
+            address="Челябинск",
+            metro="",
+            city="chelyabinsk",
+            published_text="сегодня",
+            sort_timestamp=None,
+            seller_name="Продавец",
+            seller_type="частное лицо",
+            seller_rating=5.0,
+            closed_listings=10,
+            badges=(),
+            images=[],
+            description="Отличный рабочий процессор.",
+            phone_available=True,
+        )
+
+    c1 = make_cpu(202, 13500)
+    c2 = make_cpu(203, 14000)
+    c3 = make_cpu(204, 13000)
+
+    classify_item(item_exchange, category_type="goods", search_query="r7 5700x")
+    classify_item(c1, category_type="goods", search_query="r7 5700x")
+    classify_item(c2, category_type="goods", search_query="r7 5700x")
+    classify_item(c3, category_type="goods", search_query="r7 5700x")
+
+    assert item_exchange.is_exchange_or_wtb is True
+    assert any("Обмен" in t for t in item_exchange.tags)
+
+    items = [item_exchange, c1, c2, c3]
+    annotate_market_prices(items)
+
+    # Median must be ~13 500 ₽, NOT distorted by the 100 ₽ exchange listing
+    assert c1.market_price == 13500
+    assert c1.market_diff_percent == 0.0
+
+    assert item_exchange.market_price is None
+    assert item_exchange.market_diff_percent is None
+
+
+def test_cpu_combo_pool_price_in_description():
+    """Verify that multi-item CPU pool listings extract genuine price from description and don't calculate fake -81.5%."""
+    item_combo = ParsedItem(
+        id=301,
+        title="Xeon E3 1241v3, 1240v2, R7 5700x, R5 5600X",
+        price=2500,
+        price_formatted="2 500 ₽",
+        url="https://www.avito.ru/301",
+        address="Челябинск",
+        metro="",
+        city="chelyabinsk",
+        published_text="сегодня",
+        sort_timestamp=None,
+        seller_name="Продавец",
+        seller_type="частное лицо",
+        seller_rating=5.0,
+        closed_listings=25,
+        badges=(),
+        images=[],
+        description=(
+            "Продам процессоры:\n"
+            "1. Xeon E3 1241v3 — 2 500 руб.\n"
+            "2. Xeon 1240v2 — 2 200 руб.\n"
+            "3. R5 5600X — 9 500 руб.\n"
+            "4. R7 5700x — 13 000 руб."
+        ),
+        phone_available=True,
+    )
+    def make_cpu(pid: int, price: int):
+        return ParsedItem(
+            id=pid,
+            title="AMD Ryzen 7 5700X OEM",
+            price=price,
+            price_formatted=f"{price:,} ₽".replace(",", " "),
+            url=f"https://www.avito.ru/{pid}",
+            address="Челябинск",
+            metro="",
+            city="chelyabinsk",
+            published_text="сегодня",
+            sort_timestamp=None,
+            seller_name="Продавец",
+            seller_type="частное лицо",
+            seller_rating=5.0,
+            closed_listings=10,
+            badges=(),
+            images=[],
+            description="Процессор R7 5700X в отличном состоянии.",
+            phone_available=True,
+        )
+
+    c1 = make_cpu(302, 13500)
+    c2 = make_cpu(303, 14000)
+    c3 = make_cpu(304, 13000)
+
+    classify_item(item_combo, category_type="goods", search_query="r7 5700x")
+    classify_item(c1, category_type="goods", search_query="r7 5700x")
+    classify_item(c2, category_type="goods", search_query="r7 5700x")
+    classify_item(c3, category_type="goods", search_query="r7 5700x")
+
+    assert item_combo.is_combo_listing is True
+    assert item_combo.is_in_desc_or_list is True
+    assert item_combo.real_price_in_desc == 13000
+    assert any("Товар в списке" in t for t in item_combo.tags)
+
+    items = [item_combo, c1, c2, c3]
+    annotate_market_prices(items)
+
+    # Market median must be ~13 250 - 13 500 ₽ (based on 13000, 13500, 14000, 13000, NOT 2500 ₽)
+    assert 13000 <= c1.market_price <= 13500
+
+    # Combo diff percent must be computed using real price 13000, NOT the 2500 ₽ bait price!
+    assert item_combo.market_diff_percent is not None
+    # (13000 - 13250) / 13250 * 100 is approx -1.9% to -3.7%, NEVER -81.5%!
+    assert -10.0 <= item_combo.market_diff_percent <= 5.0
+
+
+
 

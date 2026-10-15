@@ -681,6 +681,44 @@ function isAccessoryLot(lot, searchQuery = '') {
   return false;
 }
 
+// 5.2 Defect & iCloud Lock and Exchange / Trade Detection
+const ICLOUD_RE = /\b(?:icloud|айклауд|аклауд|activation\s*lock|заблокирован(?:\s+на\s+icloud|\s+apple|\s+экран|\s+телефон|\s+айфон)?|забыли\s+(?:пароль|код|apple\s*id|айклауд)|apple\s*id|lock\b|лоченый|залочен\w*|mdm\b|корпоративн\w*\s+профиль|bypass|байпас|демо\b|demo\b)\b/iu;
+const DONOR_DEAD_RE = /\b(?:на\s+запчаст\w*|на\s+разбор\w*|под\s+восстановлен\w*|не\s+включается|не\s+включ\w*|труп\b|донор\w*|плата\s+мертв\w*|кирпич\b|после\s+воды|утоплен\w*|залит\w*|условно\s*рабоч\w*|отвал\b|артефакт\w*)\b/iu;
+const SCREEN_DEFECT_RE = /\b(?:разбит\w*\s+экран|треснут\w*\s+экран|черн\w*\s+экран|полос\w*\s+на\s+экран|экран\s+под\s+замену|битый\s+экран|пятн\w*\s+на\s+диспле\w*|пятно\s+на\s+экран\w*)\b/iu;
+const GENERAL_DEFECT_RE = /(?<!не\s)бит(?:ый|ая|ое|ые)\b|заблок|блокировк|icloud|айклауд|аклауд|на\s+запчаст|на\s+разбор|под\s+восстановл|не\s+включ|не\s+работает|разбит|треснут|утоплен|после\s+воды|залит|не\s+ловит|плата\s+мертв|донор|условно\s*рабоч|проблем\w*\s+с\s+драйвер|кернел|kernel|отвал|артефакт|полос\w*\s+на\s+экран|черн\w*\s+экран|не\s+выводит|прогрет|после\s+майнинг|вылетает|код\s*43|ошибк\w*\s+43/iu;
+const EXCHANGE_RE = /\b(?:обмен\s+(?:на|с\s+доплатой)|обменяю\s+(?:на|с\s+доплатой)|обменял\s+бы\s+на|рассмотрю\s+обмен\s+на|только\s+обмен|обмен\b|обменяю\b|куплю\b|ищу\b|приму\s+в\s+дар|скупка\b|выкуп\b|спрос\b)\b/iu;
+
+function getLotDefectInfo(lot) {
+  if (!lot) return { isDefect: false, type: null, label: null };
+  if (lot.isDefect) {
+    return {
+      isDefect: true,
+      type: lot.defectType || 'general',
+      label: lot.defectType === 'icloud' ? 'iCloud Lock' : (lot.defectType === 'dead' ? 'На запчасти' : 'Дефект')
+    };
+  }
+  const text = `${lot.title || ''} ${lot.description || ''}`;
+  if (ICLOUD_RE.test(text)) return { isDefect: true, type: 'icloud', label: 'iCloud Lock' };
+  if (DONOR_DEAD_RE.test(text)) return { isDefect: true, type: 'dead', label: 'На запчасти' };
+  if (SCREEN_DEFECT_RE.test(text)) return { isDefect: true, type: 'screen', label: 'Дефект экрана' };
+  if (GENERAL_DEFECT_RE.test(text)) return { isDefect: true, type: 'general', label: 'Дефект' };
+  if (Array.isArray(lot.tags) && lot.tags.some(t => t.includes('Дефект') || t.includes('Заблокирован') || t.includes('На запчасти'))) {
+    return { isDefect: true, type: 'general', label: 'Дефект' };
+  }
+  return { isDefect: false, type: null, label: null };
+}
+
+function isExchangeLot(lot) {
+  if (!lot) return false;
+  if (lot.isExchangeOrWtb) return true;
+  const title = (lot.title || '').toLowerCase();
+  const text = `${title} ${(lot.description || '').toLowerCase()}`;
+  if (/\b(?:обмен|обменяю|обменял\s+бы|куплю|ищу|скупка|выкуп|спрос)\b/iu.test(title)) return true;
+  if (/\b(?:обмен\s+(?:на|с\s+доплатой)|обменяю\s+(?:на|с\s+доплатой)|обменял\s+бы\s+на|рассмотрю\s+обмен)\b/iu.test(text) && (lot.price === null || lot.price <= 1000)) return true;
+  if (Array.isArray(lot.tags) && lot.tags.some(t => t.includes('Обмен') || t.includes('Спрос'))) return true;
+  return false;
+}
+
 const WB_L = '(?<![\\p{L}\\p{N}])';
 const WB_R = '(?![\\p{L}\\p{N}])';
 
@@ -743,7 +781,34 @@ function parseQueryIntent(query) {
     return intent;
   }
 
-  // 4. GPU detection
+  // 4. CPU detection (Ryzen, Core i, Xeon)
+  const ryzenRe = new RegExp(`${WB_L}(?:ryzen|райзен|r)\\s*([3579])\\s*[-]?\\s*(\\d{4}[a-z0-9]*)?${WB_R}`, 'iu');
+  const ryzenMatch = q.match(ryzenRe);
+  if (ryzenMatch) {
+    intent.brand = 'amd_ryzen';
+    intent.subModel = `r${ryzenMatch[1]}`;
+    if (ryzenMatch[2]) intent.modelNumber = ryzenMatch[2].toLowerCase();
+    return intent;
+  }
+
+  const intelRe = new RegExp(`${WB_L}(?:intel\\s+)?(?:core\\s+)?i([3579])\\s*[-]?\\s*(\\d{4,5}[a-z0-9]*)?${WB_R}`, 'iu');
+  const intelMatch = q.match(intelRe);
+  if (intelMatch) {
+    intent.brand = 'intel_core';
+    intent.subModel = `i${intelMatch[1]}`;
+    if (intelMatch[2]) intent.modelNumber = intelMatch[2].toLowerCase();
+    return intent;
+  }
+
+  const xeonRe = new RegExp(`${WB_L}xeon\\s*(?:e[357]\\s*)?(\\d{4}[a-z0-9\\s]*v\\d|\\d{4}[a-z0-9]*)${WB_R}`, 'iu');
+  const xeonMatch = q.match(xeonRe);
+  if (xeonMatch) {
+    intent.brand = 'intel_xeon';
+    intent.modelNumber = xeonMatch[1].toLowerCase().replace(/\s+/g, '');
+    return intent;
+  }
+
+  // 5. GPU detection
   const gpuRe = new RegExp(`${WB_L}(rtx|gtx|rx)\\s*(\\d{3,4})\\s*(ti\\s*super|super|ti|xtx|xt)?${WB_R}`, 'iu');
   const gpuMatch = q.match(gpuRe);
   if (gpuMatch) {
@@ -827,6 +892,33 @@ function parseItemModel(title, description = '') {
     } else {
       item.subModel = 'base';
     }
+    return item;
+  }
+
+  // CPU
+  const ryzenRe = new RegExp(`${WB_L}(?:ryzen|райзен|r)\\s*([3579])\\s*[-]?\\s*(\\d{4}[a-z0-9]*)?${WB_R}`, 'iu');
+  const ryzenMatch = t.match(ryzenRe);
+  if (ryzenMatch) {
+    item.brand = 'amd_ryzen';
+    item.subModel = `r${ryzenMatch[1]}`;
+    if (ryzenMatch[2]) item.modelNumber = ryzenMatch[2].toLowerCase();
+    return item;
+  }
+
+  const intelRe = new RegExp(`${WB_L}(?:intel\\s+)?(?:core\\s+)?i([3579])\\s*[-]?\\s*(\\d{4,5}[a-z0-9]*)?${WB_R}`, 'iu');
+  const intelMatch = t.match(intelRe);
+  if (intelMatch) {
+    item.brand = 'intel_core';
+    item.subModel = `i${intelMatch[1]}`;
+    if (intelMatch[2]) item.modelNumber = intelMatch[2].toLowerCase();
+    return item;
+  }
+
+  const xeonRe = new RegExp(`${WB_L}xeon\\s*(?:e[357]\\s*)?(\\d{4}[a-z0-9\\s]*v\d|\\d{4}[a-z0-9]*)${WB_R}`, 'iu');
+  const xeonMatch = t.match(xeonRe);
+  if (xeonMatch) {
+    item.brand = 'intel_xeon';
+    item.modelNumber = xeonMatch[1].toLowerCase().replace(/\s+/g, '');
     return item;
   }
 
@@ -1339,9 +1431,7 @@ function openAvito(event, url) {
 
 function setQueryPreset(q, minP) {
   const qInput = document.getElementById('newQueryInput');
-  const minInput = document.getElementById('newMinPriceInput');
   if (qInput) qInput.value = q;
-  if (minInput && minP) minInput.value = minP;
 }
 
 async function quickAddPreset(query, city, minPrice) {
@@ -1594,18 +1684,40 @@ function updateStats() {
   const currentSearch = State.searches.find(s => s.id === State.currentSearchId);
   const searchQ = currentSearch?.query || '';
 
-  // Calculate clean market median strictly excluding accessories, defects, combo bait listings, and mismatched models
-  const matchingValidLots = currentScoped.filter(l =>
-    (searchQ ? isItemMatchingSearch(l.title, l.description, searchQ) : true) &&
-    !isAccessoryLot(l, searchQ) &&
-    !l.isComboListing
-  );
+  // Calculate clean market median strictly excluding accessories, defects, combo bait listings, exchanges, and mismatched models
+  const matchingValidLots = currentScoped.filter(l => {
+    const defect = getLotDefectInfo(l);
+    const exchange = isExchangeLot(l);
+    const acc = isAccessoryLot(l, searchQ);
+    const match = searchQ ? isItemMatchingSearch(l.title, l.description, searchQ) : true;
+    return match && !defect.isDefect && !exchange && !acc && !l.isComboListing;
+  });
   const targetLots = matchingValidLots.length >= 2
     ? matchingValidLots
-    : currentScoped.filter(l => searchQ ? isItemMatchingSearch(l.title, l.description, searchQ) : true);
+    : currentScoped.filter(l => {
+        const defect = getLotDefectInfo(l);
+        const exchange = isExchangeLot(l);
+        const match = searchQ ? isItemMatchingSearch(l.title, l.description, searchQ) : true;
+        return match && !defect.isDefect && !exchange;
+      });
 
   let medianPrice = 0;
-  const validPrices = targetLots.map(l => l.price).filter(p => typeof p === 'number' && p > 0);
+  const validPrices = [];
+  currentScoped.forEach(l => {
+    const defect = getLotDefectInfo(l);
+    const exchange = isExchangeLot(l);
+    const acc = isAccessoryLot(l, searchQ);
+    const match = searchQ ? isItemMatchingSearch(l.title, l.description, searchQ) : true;
+    if (!match || defect.isDefect || exchange || acc) return;
+    if (l.isComboListing || l.isInDescOrList) {
+      if (typeof l.realPriceInDesc === 'number' && l.realPriceInDesc >= 1000) {
+        validPrices.push(l.realPriceInDesc);
+      }
+    } else if (typeof l.price === 'number' && l.price > 0) {
+      validPrices.push(l.price);
+    }
+  });
+
   if (validPrices.length > 0) {
     const sorted = [...validPrices].sort((a, b) => a - b);
     let slice = sorted;
@@ -1628,14 +1740,24 @@ function updateStats() {
     DOM.statMedianPrice.textContent = medianPrice > 0 ? `${medianPrice.toLocaleString('ru-RU')} ₽` : '—';
   }
 
-  // Deals Count (excluding accessories from being counted as product deals)
-  const dealsCount = targetLots.filter(l => l.discount <= -12 && !l.isComboListing && !isAccessoryLot(l, searchQ)).length;
+  // Deals Count (excluding accessories, defects, exchanges from being counted as product deals)
+  const dealsCount = currentScoped.filter(l => {
+    const defect = getLotDefectInfo(l);
+    const exchange = isExchangeLot(l);
+    const acc = isAccessoryLot(l, searchQ);
+    return (l.discount || 0) <= -12 && !l.isComboListing && !defect.isDefect && !exchange && !acc;
+  }).length;
   if (DOM.statDealsCount) {
     DOM.statDealsCount.textContent = dealsCount;
   }
 
   // Top Discount
-  const topDeal = targetLots.find(l => l.discount < 0 && !l.isComboListing && !isAccessoryLot(l, searchQ));
+  const topDeal = currentScoped.find(l => {
+    const defect = getLotDefectInfo(l);
+    const exchange = isExchangeLot(l);
+    const acc = isAccessoryLot(l, searchQ);
+    return (l.discount || 0) < 0 && !l.isComboListing && !defect.isDefect && !exchange && !acc;
+  });
   if (DOM.statTopDiscount) {
     DOM.statTopDiscount.textContent = topDeal ? `${topDeal.discount}%` : '0%';
   }
@@ -1905,7 +2027,9 @@ function createLotCard(lot) {
   card.className = 'lot-card';
   card.dataset.id = lot.id;
 
-  const isDeal = lot.discount <= -12 && !lot.isComboListing;
+  const defectInfo = getLotDefectInfo(lot);
+  const exchangeInfo = isExchangeLot(lot);
+  const isDeal = (lot.discount || 0) <= -12 && !lot.isComboListing && !defectInfo.isDefect && !exchangeInfo;
   const isFav = State.favorites.includes(String(lot.id));
 
   // Find search for city badge
@@ -1925,12 +2049,18 @@ function createLotCard(lot) {
     </div>
   ` : '';
 
-  // Deal badge or Combo alert
+  // Deal badge or Defect/Exchange/Combo alert
   let badgeHtml = '';
-  if (isDeal) {
-    badgeHtml = `<div class="deal-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg> ВЫГОДА ${lot.discount}%</div>`;
+  if (defectInfo.isDefect) {
+    badgeHtml = `<div class="deal-badge badge-icloud"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> ${defectInfo.label}</div>`;
+  } else if (exchangeInfo) {
+    badgeHtml = `<div class="deal-badge badge-exchange"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> ОБМЕН</div>`;
+  } else if (lot.isInDescOrList || (lot.realPriceInDesc && lot.realPriceInDesc > 0)) {
+    badgeHtml = `<div class="deal-badge badge-combo"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> В ОПИСАНИИ</div>`;
   } else if (lot.isComboListing) {
-    badgeHtml = `<div class="deal-badge" style="background: rgba(245, 158, 11, 0.15); color: #F59E0B; border-color: rgba(245, 158, 11, 0.3)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> СБОРНЫЙ ЛОТ</div>`;
+    badgeHtml = `<div class="deal-badge badge-combo"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> СБОРНЫЙ ЛОТ</div>`;
+  } else if (isDeal) {
+    badgeHtml = `<div class="deal-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg> ВЫГОДА ${lot.discount}%</div>`;
   } else {
     badgeHtml = `<span class="caption font-mono">${lot.publishedText || 'сегодня'}</span>`;
   }
@@ -1938,7 +2068,7 @@ function createLotCard(lot) {
   // Price formatting
   const priceFormatted = `${lot.price.toLocaleString('ru-RU')} ₽`;
   const marketFormatted = lot.marketPrice ? `${lot.marketPrice.toLocaleString('ru-RU')} ₽` : '';
-  const diffSign = lot.discount <= 0 ? '' : '+';
+  const diffSign = (lot.discount || 0) <= 0 ? '' : '+';
 
   // Vanish button: X or restore
   const vanishHtml = lot.isDismissed ? `
@@ -1957,6 +2087,12 @@ function createLotCard(lot) {
   // Secondary badges
   const isAcc = isAccessoryLot(lot, searchObj?.query || '');
   let tagsList = [...(lot.tags || [])];
+  if (defectInfo.isDefect && !tagsList.some(t => t.includes('iCloud') || t.includes('Дефект') || t.includes('запчасти'))) {
+    tagsList.unshift(defectInfo.type === 'icloud' ? '🔒 iCloud Lock' : '⚡ На запчасти / Дефект');
+  }
+  if (exchangeInfo && !tagsList.some(t => t.includes('Обмен') || t.includes('Спрос'))) {
+    tagsList.unshift('🔄 Обмен');
+  }
   if (isAcc && !tagsList.some(t => t.includes('Аксессуар') || t.includes('Велозапчасть') || t.includes('Автоаксессуар'))) {
     tagsList.unshift('🛡️ Аксессуар');
   }
@@ -1964,10 +2100,69 @@ function createLotCard(lot) {
   const pillsHtml = tagsList.slice(0, 2).map(tag => {
     let cls = 'badge-subtle';
     if (tag.includes('Частный')) cls += ' badge-private';
-    if (tag.includes('Сборное') || tag.includes('Дефект')) cls += ' badge-warning';
+    if (tag.includes('Сборное') || tag.includes('Дефект') || tag.includes('iCloud') || tag.includes('запчасти')) cls += ' badge-warning';
     if (tag.includes('Аксессуар') || tag.includes('Велозапчасть') || tag.includes('Автоаксессуар')) cls += ' badge-acc';
     return `<span class="${cls}">${escapeHtml(tag)}</span>`;
   }).join('');
+
+  // Price row HTML
+  let priceRowHtml = '';
+  if (lot.realPriceInDesc && lot.realPriceInDesc > 0) {
+    const realFormatted = `${lot.realPriceInDesc.toLocaleString('ru-RU')} ₽`;
+    const diffPercent = lot.marketPrice ? Math.round((lot.realPriceInDesc - lot.marketPrice) / lot.marketPrice * 100) : null;
+    const descDiffSign = diffPercent && diffPercent > 0 ? '+' : '';
+    priceRowHtml = `
+      <div class="card-price-row">
+        <div>
+          <div class="card-price" style="display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;">
+            <span>~${realFormatted}</span>
+            <span class="card-price-desc-tag">(в описании)</span>
+          </div>
+          <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">в объявлении от ${priceFormatted} за другой товар</div>
+        </div>
+        ${lot.marketPrice ? `
+          <div class="card-market font-mono" title="Оценка рыночной цены лота">
+            <span class="card-market-label">рынок:</span> <span class="card-market-price">${lot.marketPrice.toLocaleString('ru-RU')} ₽</span>${diffPercent !== null ? ` <span class="card-market-diff ${diffPercent <= -12 ? 'deal' : (diffPercent > 0 ? 'over' : '')}">(${descDiffSign}${diffPercent}%)</span>` : ''}
+          </div>` : ''}
+      </div>
+    `;
+  } else if (defectInfo.isDefect) {
+    priceRowHtml = `
+      <div class="card-price-row">
+        <div class="card-price">${priceFormatted}</div>
+        ${marketFormatted ? `
+          <div class="card-market font-mono" title="Оценка рыночной цены исправных товаров">
+            <span class="card-market-label">исправный:</span> <span class="card-market-price">${marketFormatted}</span>
+          </div>` : ''}
+      </div>
+    `;
+  } else if (exchangeInfo) {
+    priceRowHtml = `
+      <div class="card-price-row">
+        <div class="card-price">${priceFormatted} <span class="card-price-desc-tag">(обмен)</span></div>
+      </div>
+    `;
+  } else if (lot.isComboListing) {
+    priceRowHtml = `
+      <div class="card-price-row">
+        <div class="card-price">${priceFormatted} <span class="card-price-desc-tag">(список цен)</span></div>
+        ${marketFormatted ? `
+          <div class="card-market font-mono">
+            <span class="card-market-label">рынок:</span> <span class="card-market-price">${marketFormatted}</span>
+          </div>` : ''}
+      </div>
+    `;
+  } else {
+    priceRowHtml = `
+      <div class="card-price-row">
+        <div class="card-price">${priceFormatted}</div>
+        ${marketFormatted ? `
+          <div class="card-market font-mono" title="Оценка рыночной цены лота">
+            <span class="card-market-label">рынок:</span> <span class="card-market-price">${marketFormatted}</span>${lot.discount ? ` <span class="card-market-diff ${isDeal ? 'deal' : (lot.discount > 0 ? 'over' : '')}">(${diffSign}${lot.discount}%)</span>` : ''}
+          </div>` : ''}
+      </div>
+    `;
+  }
 
   card.innerHTML = `
     ${mediaHtml}
@@ -1982,13 +2177,7 @@ function createLotCard(lot) {
     <div class="card-body">
       <h3 class="card-title">${escapeHtml(lot.title)}</h3>
 
-      <div class="card-price-row">
-        <div class="card-price">${priceFormatted}</div>
-        ${marketFormatted ? `
-          <div class="card-market font-mono" title="Оценка рыночной цены лота">
-            <span class="card-market-label">рынок:</span> <span class="card-market-price">${marketFormatted}</span>${lot.discount ? ` <span class="card-market-diff ${isDeal ? 'deal' : (lot.discount > 0 ? 'over' : '')}">(${diffSign}${lot.discount}%)</span>` : ''}
-          </div>` : ''}
-      </div>
+      ${priceRowHtml}
 
       <div class="card-meta">
         <div class="card-seller">
@@ -2167,11 +2356,9 @@ async function handleNewSearchSubmit(e) {
   if (e) e.preventDefault();
   const qEl = document.getElementById('newQueryInput');
   const cityEl = document.getElementById('newCitySelect');
-  const minPEl = document.getElementById('newMinPriceInput');
 
   const q = qEl ? qEl.value.trim() : '';
   const city = cityEl ? cityEl.value : 'chelyabinsk';
-  const minP = minPEl ? minPEl.value.trim() : '';
 
   if (!q) {
     showToast('Введите название товара!', 'error');
@@ -2190,7 +2377,7 @@ async function handleNewSearchSubmit(e) {
     const newSearch = await ApiService.createSearch({
       query: q,
       city: city,
-      minPrice: minP ? Number(minP) : 0,
+      minPrice: 0,
       filters: { noDefects: true, excludeAccessories: excludeAcc }
     });
 
@@ -2350,10 +2537,6 @@ function setupEventListeners() {
     window.Suggestions.init(newQueryInput, queryDropdown, {
       limit: 7,
       onSelect: (item) => {
-        const minPriceInput = document.getElementById('newMinPriceInput');
-        if (minPriceInput && item.minPrice && (!minPriceInput.value || minPriceInput.value === '0')) {
-          minPriceInput.value = item.minPrice;
-        }
         showToast(`Выбрано: ${item.title}`, 'info');
       }
     });

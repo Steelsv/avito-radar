@@ -33,6 +33,43 @@ OWNER_TEXT_RE = re.compile(
     re.I,
 )
 
+# Specific Defect Patterns
+ICLOUD_LOCK_RE = re.compile(
+    r"\b(?:"
+    r"icloud|айклауд|аклауд|activation\s*lock|заблокирован(?:\s+на\s+icloud|\s+apple|\s+экран|\s+телефон|\s+айфон)?|"
+    r"забыли\s+(?:пароль|код|apple\s*id|айклауд)|apple\s*id|lock\b|лоченый|залочен\w*|"
+    r"mdm\b|корпоративн\w*\s+профиль|bypass|байпас|демо\b|demo\b"
+    r")\b",
+    re.I,
+)
+
+DONOR_DEAD_RE = re.compile(
+    r"\b(?:"
+    r"на\s+запчаст\w*|на\s+разбор\w*|под\s+восстановлен\w*|не\s+включается|не\s+включ\w*|"
+    r"труп\b|донор\w*|плата\s+мертв\w*|кирпич\b|после\s+воды|утоплен\w*|залит\w*|"
+    r"условно\s*рабоч\w*|отвал\b|артефакт\w*"
+    r")\b",
+    re.I,
+)
+
+SCREEN_DEFECT_RE = re.compile(
+    r"\b(?:"
+    r"разбит\w*\s+экран|треснут\w*\s+экран|черн\w*\s+экран|полос\w*\s+на\s+экран|"
+    r"экран\s+под\s+замену|битый\s+экран|пятн\w*\s+на\s+диспле\w*|пятно\s+на\s+экран\w*"
+    r")\b",
+    re.I,
+)
+
+# Exchange / Trade / WTB (Want To Buy) patterns
+EXCHANGE_WTB_RE = re.compile(
+    r"\b(?:"
+    r"обмен\s+(?:на|с\s+доплатой)|обменяю\s+(?:на|с\s+доплатой)|обменял\s+бы\s+на|"
+    r"рассмотрю\s+обмен\s+на|только\s+обмен|обмен\b|обменяю\b|"
+    r"куплю\b|ищу\b|приму\s+в\s+дар|скупка\b|выкуп\b|спрос\b"
+    r")\b",
+    re.I,
+)
+
 # Electronics defects
 DEFECT_RE = re.compile(
     r"(?<!не\s)бит(?:ый|ая|ое|ые)\b|заблок|блокировк|icloud|айклауд|аклауд|"
@@ -248,7 +285,30 @@ def parse_query_intent(query: str) -> QueryIntent | None:
                 intent.sub_model = "any"
         return intent
 
-    # 4. GPU detection (RTX 4070, RX 6700 XT, etc.)
+    # 4. CPU detection (Ryzen, Core i, Xeon)
+    ryzen_m = re.search(r"(?<!\w)(?:ryzen|райзен|r)\s*([3579])\s*[-]?\s*(\d{4}[a-z0-9]*)?(?!\w)", q, re.I)
+    if ryzen_m:
+        intent.brand = "amd_ryzen"
+        intent.sub_model = f"r{ryzen_m.group(1)}"
+        if ryzen_m.group(2):
+            intent.model_number = ryzen_m.group(2).lower()
+        return intent
+
+    intel_m = re.search(r"(?<!\w)(?:intel\s+)?(?:core\s+)?i([3579])\s*[-]?\s*(\d{4,5}[a-z0-9]*)?(?!\w)", q, re.I)
+    if intel_m:
+        intent.brand = "intel_core"
+        intent.sub_model = f"i{intel_m.group(1)}"
+        if intel_m.group(2):
+            intent.model_number = intel_m.group(2).lower()
+        return intent
+
+    xeon_m = re.search(r"(?<!\w)xeon\s*(?:e[357]\s*)?(\d{4}[a-z0-9\s]*v\d|\d{4}[a-z0-9]*)(?!\w)", q, re.I)
+    if xeon_m:
+        intent.brand = "intel_xeon"
+        intent.model_number = xeon_m.group(1).lower().replace(" ", "")
+        return intent
+
+    # 5. GPU detection (RTX 4070, RX 6700 XT, etc.)
     gpu_m = re.search(r"(?<!\w)(rtx|gtx|rx)\s*(\d{3,4})\s*(ti\s*super|super|ti|xtx|xt)?(?!\w)", q, re.I)
     if gpu_m:
         intent.brand = gpu_m.group(1).lower()
@@ -257,7 +317,7 @@ def parse_query_intent(query: str) -> QueryIntent | None:
         intent.sub_model = sub if sub else "any"
         return intent
 
-    # 5. Console detection (PS5, PlayStation 5)
+    # 6. Console detection (PS5, PlayStation 5)
     ps_m = re.search(r"(?<!\w)(?:playstation|ps|пс)\s*([345])(?!\w)", q, re.I)
     if ps_m:
         intent.brand = "playstation"
@@ -270,7 +330,7 @@ def parse_query_intent(query: str) -> QueryIntent | None:
             intent.sub_model = "any"
         return intent
 
-    # 6. Generic brand + model number (e.g. Format 5222, BMW 3, Camry 70)
+    # 7. Generic brand + model number (e.g. Format 5222, BMW 3, Camry 70)
     gen_m = re.search(r"(?<!\w)([a-zA-Zа-яА-ЯёЁ]{2,})\s+(\d{1,4}[a-zA-Zа-яА-ЯёЁ]?)(?!\w)", q, re.I)
     if gen_m:
         intent.brand = gen_m.group(1).lower()
@@ -316,6 +376,29 @@ def parse_item_model(title: str, description: str = "") -> dict[str, Any]:
             item["sub_model"] = "mini"
         else:
             item["sub_model"] = "base"
+        return item
+
+    # CPU
+    ryzen_m = re.search(r"(?<!\w)(?:ryzen|райзен|r)\s*([3579])\s*[-]?\s*(\d{4}[a-z0-9]*)?(?!\w)", t, re.I)
+    if ryzen_m:
+        item["brand"] = "amd_ryzen"
+        item["sub_model"] = f"r{ryzen_m.group(1)}"
+        if ryzen_m.group(2):
+            item["model_number"] = ryzen_m.group(2).lower()
+        return item
+
+    intel_m = re.search(r"(?<!\w)(?:intel\s+)?(?:core\s+)?i([3579])\s*[-]?\s*(\d{4,5}[a-z0-9]*)?(?!\w)", t, re.I)
+    if intel_m:
+        item["brand"] = "intel_core"
+        item["sub_model"] = f"i{intel_m.group(1)}"
+        if intel_m.group(2):
+            item["model_number"] = intel_m.group(2).lower()
+        return item
+
+    xeon_m = re.search(r"(?<!\w)xeon\s*(?:e[357]\s*)?(\d{4}[a-z0-9\s]*v\d|\d{4}[a-z0-9]*)(?!\w)", t, re.I)
+    if xeon_m:
+        item["brand"] = "intel_xeon"
+        item["model_number"] = xeon_m.group(1).lower().replace(" ", "")
         return item
 
     # GPU
@@ -418,28 +501,34 @@ def extract_desc_prices_for_query(description: str, query: str) -> list[int]:
     if not description or not query:
         return []
 
-    num_matches = re.findall(r"\d{2,5}", query)
+    tokens = [t.lower() for t in re.findall(r"[a-zA-Z0-9]{3,}", query)]
+    num_matches = re.findall(r"\d{3,5}", query)
     found_prices: list[int] = []
 
     for line in description.split("\n"):
         line_clean = line.strip()
         if not line_clean:
             continue
+        line_low = line_clean.lower()
 
         matches_model = False
-        if num_matches:
-            if any(num in line_clean for num in num_matches):
-                matches_model = True
-        else:
-            words = [w for w in re.split(r"[\s_-]+", query.lower()) if len(w) >= 3]
-            if words and any(w in line_clean.lower() for w in words):
-                matches_model = True
+        if num_matches and any(num in line_low for num in num_matches):
+            matches_model = True
+        elif tokens and any(tok in line_low for tok in tokens):
+            matches_model = True
 
         if matches_model:
             for p_str in PRICE_IN_TEXT_RE.findall(line_clean):
                 clean_num = int(re.sub(r"\s+", "", p_str))
                 if clean_num >= 1000:
                     found_prices.append(clean_num)
+
+            for m in re.finditer(r"(?:[-:=—–]\s*|\bот\s+)(\d[\d\s]{2,6})(?!\d)", line_clean):
+                val_str = re.sub(r"\s+", "", m.group(1))
+                if val_str.isdigit():
+                    num = int(val_str)
+                    if 1000 <= num <= 500000:
+                        found_prices.append(num)
 
     return found_prices
 
@@ -448,6 +537,7 @@ def classify_item(item: ParsedItem, category_type: str = "goods", search_query: 
     """Analyze item and attach classification tags."""
     seller_label_low = item.seller_type.lower()
     full_text = f"{item.title} {item.description}".lower()
+    title_low = item.title.lower()
 
     if category_type == "realty":
         # Check agency vs owner
@@ -483,8 +573,36 @@ def classify_item(item: ParsedItem, category_type: str = "goods", search_query: 
                 item.is_mismatched_model = True
                 item.tags.append("⚠️ Другая модель / поколение")
 
-        if DEFECT_RE.search(full_text):
-            item.tags.append("⚠️ Дефект / На запчасти")
+        # 1. Defect & iCloud Lock Detection
+        if ICLOUD_LOCK_RE.search(full_text):
+            item.is_defect = True
+            item.defect_type = "icloud"
+            item.tags.append("🔒 Заблокирован iCloud / MDM")
+            item.tags.append("⚠️ Дефект (iCloud / блокировка)")
+        elif DONOR_DEAD_RE.search(full_text):
+            item.is_defect = True
+            item.defect_type = "dead"
+            item.tags.append("⚡ На запчасти / Не включается")
+            item.tags.append("⚠️ Дефект / Неисправность")
+        elif SCREEN_DEFECT_RE.search(full_text):
+            item.is_defect = True
+            item.defect_type = "screen"
+            item.tags.append("💔 Разбит экран / Дефект")
+        elif DEFECT_RE.search(full_text):
+            item.is_defect = True
+            item.defect_type = "general"
+            item.tags.append("⚠️ Дефект / Неисправность")
+
+        # 2. Exchange & WTB (Trade/Purchase) Detection
+        is_exchange_title = bool(re.search(r"\b(?:обмен|обменяю|обменял\s+бы|куплю|ищу|скупка|выкуп|спрос)\b", title_low, re.I))
+        is_exchange_desc = bool(re.search(r"\b(?:обмен\s+(?:на|с\s+доплатой)|обменяю\s+(?:на|с\s+доплатой)|обменял\s+бы\s+на|рассмотрю\s+обмен\s+на|только\s+обмен)\b", full_text, re.I))
+
+        if is_exchange_title or (is_exchange_desc and (item.price is None or item.price <= 1000)):
+            item.is_exchange_or_wtb = True
+            if re.search(r"\b(?:куплю|ищу|скупка|выкуп|спрос)\b", title_low, re.I):
+                item.tags.append("🔍 Спрос / Покупка")
+            else:
+                item.tags.append("🔄 Обмен / Не продажа")
 
         if PARTS_AND_ACCESSORIES_RE.search(item.title.lower()) and not is_acc:
             item.tags.append("🔧 Запчасти / Комплектующие")
@@ -495,10 +613,10 @@ def classify_item(item: ParsedItem, category_type: str = "goods", search_query: 
             item.tags.append("💻 Ноутбук")
 
         # Clickbait price detection (< 1000 ₽ for high-tech goods)
-        if item.price and item.price < 1000:
+        if item.price and item.price < 1000 and not item.is_exchange_or_wtb:
             item.tags.append("⚠️ Подозрительная цена (кликбейт / запчасть)")
 
-        # Check combo / multi-item listing / price discrepancies in description
+        # 3. Check combo / multi-item listing / hardware pool in title
         is_combo = False
         numbered_matches = NUMBERED_PRICE_LIST_RE.findall(item.description)
         if len(numbered_matches) >= 2 or COMBO_KEYWORDS_RE.search(full_text):
@@ -506,35 +624,52 @@ def classify_item(item: ParsedItem, category_type: str = "goods", search_query: 
         elif PLURAL_CATEGORIES_RE.search(item.title.lower()):
             is_combo = True
 
+        # Multi-model hardware in title (e.g. "Xeon E3 1241v3, 1240v2, R7 5700x, R5 5600X")
+        cpu_gpu_matches = re.findall(r"\b(?:xeon|ryzen|r[3579]|core|i[3579]|rtx|gtx|rx)\b", title_low)
+        has_multi_hardware_title = len(cpu_gpu_matches) >= 2 or len(re.findall(r"\b\d{4}[a-z0-9]*\b", title_low)) >= 3
+        if has_multi_hardware_title and search_query:
+            item.is_in_desc_or_list = True
+            item.is_combo_listing = True
+            if not any("Товар в списке" in t for t in item.tags):
+                item.tags.append("📋 Товар в списке / описании")
+
         # Try extracting model-specific prices from description if search_query is available
         desc_prices = extract_desc_prices_for_query(item.description, search_query) if search_query else []
 
         if desc_prices and item.price:
             real_min_p = min(desc_prices)
-            # If listing price is significantly lower than real model price in description (e.g. 8000 vs 29000-32500)
-            if item.price < real_min_p * 0.75:
+            # If listing price is significantly lower than real model price in description (e.g. 2500 vs 13000)
+            if item.price < real_min_p * 0.75 or has_multi_hardware_title:
                 item.is_combo_listing = True
+                item.is_in_desc_or_list = True
                 item.real_price_in_desc = real_min_p
                 item.tags.append("⚠️ Сборное объявление (в описании список)")
                 p_fmt = f"{real_min_p:,}".replace(",", " ")
                 ad_fmt = f"{item.price:,}".replace(",", " ")
-                item.tags.append(f"⚠️ Реальная цена в описании: ~{p_fmt} ₽ (в объявлении {ad_fmt} ₽)")
+                item.tags.append(f"⚠️ Реальная цена в описании: ~{p_fmt} ₽ (в заголовке от {ad_fmt} ₽)")
+                if not any("Товар в списке" in t for t in item.tags):
+                    item.tags.append("📋 Товар в списке / описании")
             elif is_combo:
                 item.is_combo_listing = True
                 item.tags.append("⚠️ Сборное объявление (в описании список)")
-        elif is_combo:
+        elif is_combo or item.is_in_desc_or_list:
             item.is_combo_listing = True
-            item.tags.append("⚠️ Сборное объявление (в описании список цен)")
+            if not any("Товар в списке" in t for t in item.tags) and not any("Сборное объявление" in t for t in item.tags):
+                item.tags.append("⚠️ Сборное объявление (в описании список цен)")
 
     if any("доставка" in b.lower() for b in item.badges):
         item.tags.append("📦 С доставкой")
 
 
 def is_likely_fake_or_junk(item: ParsedItem, min_price: int | None = None) -> bool:
-    """Check if item is junk, parts, accessories, or clickbait price."""
+    """Check if item is junk, parts, accessories, defects, exchanges, or clickbait price."""
     if getattr(item, "is_mismatched_model", False):
         return True
     if getattr(item, "is_accessory", False):
+        return True
+    if getattr(item, "is_defect", False):
+        return True
+    if getattr(item, "is_exchange_or_wtb", False):
         return True
     if min_price and item.price and item.price < min_price:
         return True
@@ -546,6 +681,11 @@ def is_likely_fake_or_junk(item: ParsedItem, min_price: int | None = None) -> bo
         if any(bad in tag for bad in (
             "🔧 Запчасти",
             "⚠️ Дефект",
+            "🔒 Заблокирован",
+            "⚡ На запчасти",
+            "💔 Разбит",
+            "🔄 Обмен",
+            "🔍 Спрос",
             "Подозрительная цена",
             "Сборное объявление",
             "Реальная цена в описании",

@@ -627,6 +627,35 @@ h3, .h3 {
   font-weight: 600;
 }
 
+.deal-badge.badge-icloud {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+.deal-badge.badge-exchange {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #93c5fd;
+}
+
+.deal-badge.badge-combo {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.card-price-desc-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-brass);
+  background: rgba(197, 160, 89, 0.14);
+  border: 1px solid rgba(197, 160, 89, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
 /* Vanish Button (Скрыть лот) */
 .btn-vanish {
   width: 32px;

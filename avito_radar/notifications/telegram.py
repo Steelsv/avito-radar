@@ -113,21 +113,59 @@ def format_ad_message(search_title: str, item: ParsedItem) -> str:
     e_radar = tg_e(TG_EMOJI_RADAR, "👁")
     e_lightning = tg_e(TG_EMOJI_LIGHTNING, "⚡")
 
-    is_top_deal = item.market_diff_percent and item.market_diff_percent <= -12 and not item.is_combo_listing
-    header = f"{e_growth} <b>НАЙДЕН ВЫГОДНЫЙ ЛОТ ({item.market_diff_percent}%)</b>" if is_top_deal else f"{e_radar} <b>{html.escape(item.title)}</b>"
+    is_top_deal = (
+        item.market_diff_percent is not None
+        and item.market_diff_percent <= -12
+        and not getattr(item, "is_combo_listing", False)
+        and not getattr(item, "is_defect", False)
+        and not getattr(item, "is_exchange_or_wtb", False)
+        and not getattr(item, "is_accessory", False)
+    )
+
+    if getattr(item, "is_defect", False):
+        if getattr(item, "defect_type", "") == "icloud":
+            header = "🔒 <b>ВНИМАНИЕ: ICLOUD ЗАБЛОКИРОВАН / MDM</b>"
+        elif getattr(item, "defect_type", "") == "dead":
+            header = "⚡ <b>НА ЗАПЧАСТИ / НЕ ВКЛЮЧАЕТСЯ</b>"
+        else:
+            header = f"{e_warn} <b>ЛОТ С ДЕФЕКТОМ / НЕИСПРАВНОСТЬЮ</b>"
+    elif getattr(item, "is_exchange_or_wtb", False):
+        header = "🔄 <b>ОБМЕН / НЕ ПРЯМАЯ ПРОДАЖА</b>"
+    elif getattr(item, "is_in_desc_or_list", False) or getattr(item, "is_combo_listing", False):
+        header = "📋 <b>ТОВАР В СПИСКЕ / В ОПИСАНИИ</b>"
+    elif is_top_deal:
+        header = f"{e_growth} <b>НАЙДЕН ВЫГОДНЫЙ ЛОТ ({item.market_diff_percent}%)</b>"
+    else:
+        header = f"{e_radar} <b>{html.escape(item.title)}</b>"
 
     lines = [
         header,
-        f"<b>{html.escape(item.title)}</b>" if is_top_deal else "",
-        f"{e_coin} <b>{html.escape(item.price_formatted)}</b>",
+        f"<b>{html.escape(item.title)}</b>" if (is_top_deal or getattr(item, "is_defect", False) or getattr(item, "is_exchange_or_wtb", False) or getattr(item, "is_in_desc_or_list", False)) else "",
     ]
+
+    if getattr(item, "is_in_desc_or_list", False) and item.real_price_in_desc:
+        real_str = f"{item.real_price_in_desc:,} ₽".replace(",", " ")
+        lines.append(f"{e_coin} <b>В описании целевой товар: ~{real_str}</b> <i>(в заголовке от {html.escape(item.price_formatted)})</i>")
+    elif getattr(item, "is_exchange_or_wtb", False):
+        lines.append(f"{e_coin} <b>{html.escape(item.price_formatted)} (обмен / не продажа)</b>")
+    else:
+        lines.append(f"{e_coin} <b>{html.escape(item.price_formatted)}</b>")
+
     lines = [l for l in lines if l]
 
     if item.market_price:
         market_str = f"{item.market_price:,} ₽".replace(",", " ")
-        if item.is_combo_listing:
-            real_str = f"{item.real_price_in_desc:,} ₽".replace(",", " ") if item.real_price_in_desc else "в тексте"
-            lines.append(f"{e_warn} <i>Внимание: в описании целевой товар от ~{real_str}</i>")
+        if getattr(item, "is_defect", False):
+            lines.append(f"<i>Оценка рынка для исправных устройств ~{market_str}</i>")
+        elif getattr(item, "is_exchange_or_wtb", False):
+            pass
+        elif getattr(item, "is_combo_listing", False):
+            if item.real_price_in_desc and item.market_diff_percent is not None:
+                diff_abs = abs(round(item.market_diff_percent, 1))
+                diff_word = "Ниже" if item.market_diff_percent < 0 else "Выше"
+                lines.append(f"<i>Рыночная цена ~{market_str} ({diff_word} рынка на {diff_abs}%)</i>")
+            else:
+                lines.append(f"{e_warn} <i>Внимание: в объявлении сборный список цен (рынок ~{market_str})</i>")
         elif (item.market_diff_percent or 0) < 0:
             diff_abs = abs(round(item.market_diff_percent or 0, 1))
             lines.append(f"{e_growth} <i>Ниже рынка на {diff_abs}% (оценка рынка ~{market_str})</i>")
