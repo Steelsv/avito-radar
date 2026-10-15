@@ -1510,6 +1510,11 @@ def start_bot_service() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         force=True,
     )
+    from avito_radar.storage.git_sync import restore_data, start_sync_thread
+
+    restore_data()
+    start_sync_thread()
+
     if not acquire_bot_lock():
         logger.warning("Бот уже запущен в другом процессе! Повторный запуск остановлен.")
         print("⚠️ Бот уже запущен в другом процессе! (Вторая копия остановлена)")

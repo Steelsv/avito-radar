@@ -8,3 +8,4 @@ bot.lock
 bot.pid
 test.lock
 output/
+data/
