@@ -34,7 +34,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 
   <!-- Production CSS Stylesheet -->
-  <link rel="stylesheet" href="css/styles.css?v=10">
+  <link rel="stylesheet" href="css/styles.css?v=loft12">
 </head>
 <body>
 
@@ -96,7 +96,7 @@
     <!-- Controls Row 1: Search Scope & Sort -->
     <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
       <div style="flex: 1; display: flex; align-items: center; gap: 6px;">
-        <select id="searchSelector" class="form-select" style="height: 38px; font-size: 12px; font-weight: 600; padding: 0 10px; flex: 1;">
+        <select id="searchSelector" class="form-select" style="height: 38px; font-size: 12px; font-weight: 600; padding: 0 28px 0 10px; flex: 1;">
           <option value="">✨ Нажмите «Новый поиск»</option>
         </select>
         <button id="btnDeleteCurrentSearch" class="btn-delete-search hidden" onclick="window.app.promptDeleteCurrent()" title="Удалить выбранный радар">
@@ -106,8 +106,8 @@
         </button>
       </div>
 
-      <div style="width: 135px; flex-shrink: 0;">
-        <select id="sortSelector" class="form-select font-mono" style="height: 38px; font-size: 11px; padding: 0 8px;">
+      <div style="width: 140px; flex-shrink: 0;">
+        <select id="sortSelector" class="form-select font-mono" style="height: 38px; font-size: 11px; padding: 0 24px 0 8px;">
           <option value="deal">По выгоде (%)</option>
           <option value="cheap">Сначала дешевле</option>
           <option value="expensive">Сначала дороже</option>
