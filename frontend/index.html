@@ -9,11 +9,20 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script>
     try {
-      if (window.Telegram && window.Telegram.WebApp) {
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand();
-        if (typeof window.Telegram.WebApp.exitFullscreen === 'function') {
-          try { window.Telegram.WebApp.exitFullscreen(); } catch (_) {}
+      const tg = window.Telegram?.WebApp;
+      if (tg) {
+        tg.ready();
+        const p = (tg.platform || '').toLowerCase();
+        const isMobile = ['ios', 'android'].includes(p) || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (!isMobile) {
+          // On PC / Desktop: Expand to full screen width immediately!
+          if (typeof tg.requestFullscreen === 'function') {
+            try { tg.requestFullscreen(); } catch (_) {}
+          }
+          try { tg.expand(); } catch (_) {}
+        } else {
+          // On Mobile: Only expand natively (no forced fullscreen to avoid notch/header bugs)
+          try { tg.expand(); } catch (_) {}
         }
       }
     } catch (_) {}
@@ -25,7 +34,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 
   <!-- Production CSS Stylesheet -->
-  <link rel="stylesheet" href="css/styles.css?v=7">
+  <link rel="stylesheet" href="css/styles.css?v=10">
 </head>
 <body>
 
@@ -64,6 +73,12 @@
       <button id="btnHeaderNewSearch" class="btn-cta" onclick="window.app.openNewSearchModal()" style="height: 36px; padding: 0 14px; border-radius: 18px; font-size: 12px; width: auto;">
         <span>+</span>
         <span>Новый поиск</span>
+      </button>
+
+      <button id="btnFullscreen" class="btn-vanish" onclick="window.app.toggleFullscreen()" style="width: 36px; height: 36px; background: var(--surface-card); border: 1px solid var(--border-subtle); display: none;" title="На весь экран">
+        <svg id="fullscreenIconExpand" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+        </svg>
       </button>
 
       <button id="btnRefresh" class="btn-vanish" style="width: 36px; height: 36px; background: var(--surface-card); border: 1px solid var(--border-subtle);" title="Синхронизировать">
@@ -425,6 +440,6 @@
 
   <!-- Application Controller -->
   <script src="js/suggestions.js?v=2"></script>
-  <script src="js/app.js?v=9"></script>
+  <script src="js/app.js?v=10"></script>
 </body>
 </html>

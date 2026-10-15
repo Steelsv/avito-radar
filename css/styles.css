@@ -398,20 +398,20 @@ h3, .h3 {
 }
 
 /* ==========================================================================
-   Lot Cards (Heavy Loft Cards Grid)
+   Lot Cards (Heavy Loft Cards Grid) - 3 Columns on PC / 1 Column on Phone
    ========================================================================== */
 .lots-container {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(290px, 360px));
-  justify-content: center;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
-  padding: 12px 16px 90px;
-  max-width: 1440px;
+  padding: 14px 16px 90px;
+  max-width: 1400px;
   margin: 0 auto;
   width: 100%;
+  box-sizing: border-box;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 639px) {
   .lots-container {
     grid-template-columns: 1fr;
     padding: 10px 14px 90px;
@@ -421,7 +421,7 @@ h3, .h3 {
 
 .lot-card {
   position: relative;
-  padding: 16px;
+  padding: 14px;
   border-radius: 14px;
   background: var(--surface-card);
   border: 1px solid var(--border-subtle);
@@ -434,6 +434,103 @@ h3, .h3 {
   overflow: hidden;
   width: 100%;
   margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* Card Elements in Grid */
+.card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.card-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.7em;
+}
+
+.card-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+  font-family: var(--font-mono);
+}
+
+.card-price {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-market {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-decoration: line-through;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 8px;
+  margin-bottom: 8px;
+}
+
+.card-seller, .card-location {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  width: 100%;
+}
+
+.card-actions .btn-cta {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  height: 38px;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+}
+
+.card-actions .filter-chip {
+  flex: 0 0 auto;
+  padding: 0 12px;
+  font-size: 11px;
+  height: 38px;
+  white-space: nowrap;
 }
 
 .lot-card:hover {

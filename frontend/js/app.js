@@ -236,24 +236,53 @@ function formatSearchDisplay(search) {
 const tg = window.Telegram?.WebApp;
 
 const TelegramService = {
+  isDesktop() {
+    if (!tg) return !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const p = (tg.platform || '').toLowerCase();
+    if (['tdesktop', 'macos', 'web', 'weba', 'webk'].includes(p)) return true;
+    if (['ios', 'android'].includes(p)) return false;
+    return !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && window.innerWidth >= 640;
+  },
+
+  isMobile() {
+    return !this.isDesktop();
+  },
+
   init() {
     if (!tg) {
       console.log('[TelegramService] Running in web browser mode');
+      this.updateFullscreenButton();
       return;
     }
     try {
       tg.ready();
-      tg.expand();
-      if (typeof tg.exitFullscreen === 'function') {
-        try { tg.exitFullscreen(); } catch (_) {}
-      }
       tg.headerColor = '#0E0F12';
       tg.backgroundColor = '#0E0F12';
+
+      if (this.isDesktop()) {
+        // Desktop / PC: Automatically request fullscreen and expand to full width!
+        if (typeof tg.requestFullscreen === 'function') {
+          try { tg.requestFullscreen(); } catch (_) {}
+        }
+        try { tg.expand(); } catch (_) {}
+      } else {
+        // Mobile (iPhone / Android): DO NOT force requestFullscreen (prevents notch / status bar overlap bugs).
+        // Only use native tg.expand() for standard bottom-sheet expansion.
+        try { tg.expand(); } catch (_) {}
+      }
+
       if (tg.isVerticalSwipesEnabled !== undefined) {
         tg.isVerticalSwipesEnabled = true;
       }
 
       const updateSafeAreas = () => {
+        if (this.isDesktop()) {
+          // On PC desktop there is no hardware notch
+          document.documentElement.style.setProperty('--safe-area-top', '0px');
+          document.documentElement.style.setProperty('--safe-area-bottom', '0px');
+          return;
+        }
+
         let top = 0;
         if (tg.safeAreaInset?.top) top = Math.max(top, tg.safeAreaInset.top);
         if (tg.contentSafeAreaInset?.top) top = Math.max(top, tg.contentSafeAreaInset.top);
@@ -261,7 +290,7 @@ const TelegramService = {
         if (top > 0) {
           document.documentElement.style.setProperty('--safe-area-top', `${top}px`);
         } else {
-          document.documentElement.style.setProperty('--safe-area-top', 'max(env(safe-area-inset-top, 0px), 24px)');
+          document.documentElement.style.setProperty('--safe-area-top', 'max(env(safe-area-inset-top, 0px), 12px)');
         }
 
         let bottom = 0;
@@ -269,6 +298,8 @@ const TelegramService = {
         if (tg.contentSafeAreaInset?.bottom) bottom = Math.max(bottom, tg.contentSafeAreaInset.bottom);
         if (bottom > 0) {
           document.documentElement.style.setProperty('--safe-area-bottom', `${bottom}px`);
+        } else {
+          document.documentElement.style.setProperty('--safe-area-bottom', 'max(env(safe-area-inset-bottom, 0px), 12px)');
         }
       };
 
@@ -277,10 +308,67 @@ const TelegramService = {
         tg.onEvent('safeAreaChanged', updateSafeAreas);
         tg.onEvent('contentSafeAreaChanged', updateSafeAreas);
         tg.onEvent('viewportChanged', updateSafeAreas);
+        tg.onEvent('fullscreenChanged', () => {
+          this.updateFullscreenButton();
+        });
+        tg.onEvent('fullscreenFailed', (err) => {
+          console.warn('[TelegramService] fullscreenFailed:', err);
+          try { tg.expand(); } catch (_) {}
+        });
       }
+
+      this.updateFullscreenButton();
     } catch (e) {
       console.warn('[TelegramService] Init warning:', e);
     }
+  },
+
+  updateFullscreenButton() {
+    const btn = document.getElementById('btnFullscreen');
+    if (!btn) return;
+
+    const canFs = (tg && typeof tg.requestFullscreen === 'function') ||
+                  (!tg && typeof document.documentElement.requestFullscreen === 'function');
+
+    if (canFs && this.isDesktop()) {
+      btn.style.display = 'inline-flex';
+      const isFs = tg?.isFullscreen || Boolean(document.fullscreenElement);
+      btn.title = isFs ? 'Выйти из полноэкранного режима' : 'На весь экран';
+      const icon = document.getElementById('fullscreenIconExpand');
+      if (icon) {
+        if (isFs) {
+          icon.innerHTML = `<path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>`;
+        } else {
+          icon.innerHTML = `<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>`;
+        }
+      }
+    } else {
+      btn.style.display = 'none';
+    }
+  },
+
+  toggleFullscreen() {
+    this.haptic('medium');
+    if (tg && typeof tg.requestFullscreen === 'function') {
+      try {
+        if (tg.isFullscreen) {
+          if (typeof tg.exitFullscreen === 'function') tg.exitFullscreen();
+        } else {
+          tg.requestFullscreen();
+        }
+      } catch (err) {
+        console.warn('[TelegramService] toggleFullscreen error:', err);
+      }
+      setTimeout(() => this.updateFullscreenButton(), 200);
+      return;
+    }
+
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+    setTimeout(() => this.updateFullscreenButton(), 200);
   },
 
   haptic(type = 'light') {
@@ -1698,7 +1786,10 @@ function renderEmptyState() {
 // ==========================================================================
 // 10. Card View Rendering, Skeletons & Mobile Swipes
 // ==========================================================================
-function renderSkeletonCards(count = 4) {
+function renderSkeletonCards(count) {
+  if (!count) {
+    count = window.innerWidth >= 640 ? 6 : 4;
+  }
   if (!DOM.lotsContainer) initDOM();
   if (!DOM.lotsContainer) return;
   DOM.lotsContainer.innerHTML = '';
@@ -2302,7 +2393,8 @@ Object.assign(window.app, {
   setQueryPreset,
   quickAddPreset,
   toggleExcludeAccessories,
-  applyQueryFilter
+  applyQueryFilter,
+  toggleFullscreen: () => TelegramService.toggleFullscreen()
 });
 
 // ==========================================================================
