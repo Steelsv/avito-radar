@@ -1462,7 +1462,7 @@ def start_healthcheck_server() -> None:
                         s_rec = load_search(name)
                         if s_rec:
                             cl = AvitoClient()
-                            count = scan_search(s_rec, client=cl, max_pages=1)
+                            count, _excel_path = scan_search(s_rec, client=cl, max_pages=1)
                     bundle_data = generate_api_bundle(user_id=uid)
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
