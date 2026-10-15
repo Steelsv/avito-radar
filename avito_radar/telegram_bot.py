@@ -28,17 +28,26 @@ from avito_radar.core.client import AvitoClient
 from avito_radar.engine import create_search_from_url, scan_search
 from avito_radar.exporters.excel import export_to_excel
 from avito_radar.notifications.telegram import (
+    TG_EMOJI_ANALYTICS,
+    TG_EMOJI_BACK,
+    TG_EMOJI_CHART,
     TG_EMOJI_CHECK,
-    TG_EMOJI_COIN,
-    TG_EMOJI_GROWTH,
+    TG_EMOJI_CLOCK,
+    TG_EMOJI_CROSS,
+    TG_EMOJI_EYE_OFF,
+    TG_EMOJI_GEAR,
+    TG_EMOJI_GLOBE,
+    TG_EMOJI_HOURGLASS,
     TG_EMOJI_LIGHTNING,
     TG_EMOJI_LINK,
+    TG_EMOJI_LIST,
     TG_EMOJI_PIN,
+    TG_EMOJI_PLUS,
+    TG_EMOJI_PRICE_TAG,
     TG_EMOJI_PROFILE,
-    TG_EMOJI_RADAR,
     TG_EMOJI_SEARCH,
     TG_EMOJI_SHIELD,
-    TG_EMOJI_STAR,
+    TG_EMOJI_TAG,
     TG_EMOJI_TRASH,
     TG_EMOJI_WARN,
     TelegramConfig,
@@ -53,6 +62,7 @@ from avito_radar.storage.db import (
     SearchRecord,
     append_alert,
     delete_search,
+    is_valid_search_name,
     list_searches,
     load_listings,
     load_locations_cache,
@@ -254,18 +264,21 @@ class AvitoTelegramBot:
             "inline_keyboard": [
                 [
                     {
-                        "text": "⚡️ ТЕРМИНАЛ РАДАРА (MINI APP)",
+                        "text": "ТЕРМИНАЛ РАДАРА (MINI APP)",
                         "web_app": {"url": miniapp_url},
+                        "icon_custom_emoji_id": TG_EMOJI_LIGHTNING,
                     }
                 ],
                 [
                     {
-                        "text": "🔗 Открыть на Авито",
+                        "text": "Открыть на Авито",
                         "url": item.url,
+                        "icon_custom_emoji_id": TG_EMOJI_LINK,
                     },
                     {
-                        "text": "👁️ Скрыть лот",
+                        "text": "Скрыть лот",
                         "callback_data": f"vanish_{item.id}",
+                        "icon_custom_emoji_id": TG_EMOJI_EYE_OFF,
                     }
                 ]
             ]
@@ -294,26 +307,30 @@ class AvitoTelegramBot:
             "inline_keyboard": [
                 [
                     {
-                        "text": "⚡️ ТЕРМИНАЛ РАДАРА (MINI APP)",
+                        "text": "ТЕРМИНАЛ РАДАРА (MINI APP)",
                         "web_app": {"url": miniapp_url},
+                        "icon_custom_emoji_id": TG_EMOJI_LIGHTNING,
                     }
                 ],
                 [
                     {
-                        "text": "➕ СОЗДАТЬ НОВЫЙ РАДАР",
+                        "text": "СОЗДАТЬ НОВЫЙ РАДАР",
                         "callback_data": "menu_add",
+                        "icon_custom_emoji_id": TG_EMOJI_PLUS,
                     }
                 ],
                 [
                     {
-                        "text": "📋 МОИ РАДАРЫ И ВЫГРУЗКА",
+                        "text": "МОИ РАДАРЫ И ВЫГРУЗКА",
                         "callback_data": "menu_list",
+                        "icon_custom_emoji_id": TG_EMOJI_LIST,
                     }
                 ],
                 [
                     {
-                        "text": "⚙️ НАСТРОЙКИ МОНИТОРИНГА 24/7",
+                        "text": "НАСТРОЙКИ МОНИТОРИНГА 24/7",
                         "callback_data": "menu_settings",
+                        "icon_custom_emoji_id": TG_EMOJI_GEAR,
                     }
                 ],
             ]
@@ -329,11 +346,11 @@ class AvitoTelegramBot:
             f"<i>Премиальный мониторинг выгодных предложений</i>\n\n"
             f"🟢 <b>Статус:</b> <code>{watch_status}</code> (интервал: 15 мин)\n"
             f"🎯 <b>Отслеживаемых радаров:</b> <code>{len(searches)} шт.</code>\n\n"
-            f"⚡ <b>Все функции доступны в едином терминале:</b>\n"
-            f"• 🔎 Мгновенный поиск товаров и авто с автодополнением\n"
-            f"• 📊 Оценка рыночной стоимости и подсветка максимальной выгоды\n"
-            f"• 🛡 Защита от байт-цен (100 ₽), дефектов и мусора\n"
-            f"• 📈 Режим интерактивной таблицы прямо в Telegram\n\n"
+            f"{tg_e(TG_EMOJI_LIGHTNING, '⚡')} <b>Все функции доступны в едином терминале:</b>\n"
+            f"• {tg_e(TG_EMOJI_SEARCH, '🔎')} Мгновенный поиск товаров и авто с автодополнением\n"
+            f"• {tg_e(TG_EMOJI_CHART, '📊')} Оценка рыночной стоимости и подсветка максимальной выгоды\n"
+            f"• {tg_e(TG_EMOJI_SHIELD, '🛡')} Защита от байт-цен (100 ₽), дефектов и мусора\n"
+            f"• {tg_e(TG_EMOJI_ANALYTICS, '📈')} Режим интерактивной таблицы прямо в Telegram\n\n"
             f"<i>Уведомления о новых предложениях ниже рынка поступают мгновенно.</i>"
         )
         self.render_menu(chat_id, text, self.main_menu_keyboard(chat_id), message_id=message_id)
@@ -345,9 +362,9 @@ class AvitoTelegramBot:
         )
         kb = {
             "inline_keyboard": [
-                [{"text": "⚡️ Выбрать товар и город (Каталог)", "callback_data": "add_wizard_product"}],
-                [{"text": "🔗 Вставить скопированную ссылку с Авито", "callback_data": "add_by_url"}],
-                [{"text": "🔙 Назад в главное меню", "callback_data": "menu_main"}],
+                [{"text": "Выбрать товар и город (Каталог)", "callback_data": "add_wizard_product", "icon_custom_emoji_id": TG_EMOJI_SEARCH}],
+                [{"text": "Вставить скопированную ссылку с Авито", "callback_data": "add_by_url", "icon_custom_emoji_id": TG_EMOJI_LINK}],
+                [{"text": "Назад в главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}],
             ]
         }
         self.render_menu(chat_id, text, kb, message_id=message_id)
@@ -360,24 +377,24 @@ class AvitoTelegramBot:
         buttons = []
         for idx, (label, *_) in enumerate(POPULAR_PRODUCTS):
             buttons.append([{"text": label, "callback_data": f"pick_prod_{idx}"}])
-        buttons.append([{"text": "✏️ Ввести другое название вручную", "callback_data": "pick_prod_custom"}])
-        buttons.append([{"text": "🔙 Назад в меню", "callback_data": "menu_add"}])
+        buttons.append([{"text": "Ввести другое название вручную", "callback_data": "pick_prod_custom", "icon_custom_emoji_id": TG_EMOJI_PENCIL}])
+        buttons.append([{"text": "Назад в меню", "callback_data": "menu_add", "icon_custom_emoji_id": TG_EMOJI_BACK}])
         kb = {"inline_keyboard": buttons}
         self.render_menu(chat_id, text, kb, message_id=message_id)
 
     def send_city_selection(self, chat_id: int, message_id: int | None = None) -> None:
         session = self.get_session(chat_id)
         text = (
-            f"📍 <b>ШАГ 2 ИЗ 2: ВЫБОР РЕГИОНА</b>\n\n"
+            f"{tg_e(TG_EMOJI_PIN, '📍')} <b>ШАГ 2 ИЗ 2: ВЫБОР РЕГИОНА</b>\n\n"
             f"Товар: <b>{html.escape(session.temp_query)}</b>\n\n"
             f"Выберите город или отслеживание по всей стране:"
         )
         buttons = []
         for label, slug in POPULAR_CITIES:
-            icon = "🌐" if slug == "rossiya" else "📍"
-            buttons.append([{"text": f"{icon} {label}", "callback_data": f"pick_city_{slug}_{label}"}])
-        buttons.append([{"text": "✏️ Ввести другой город вручную", "callback_data": "pick_city_custom"}])
-        buttons.append([{"text": "🔙 Назад к товарам", "callback_data": "add_wizard_product"}])
+            icon_id = TG_EMOJI_GLOBE if slug == "rossiya" else TG_EMOJI_PIN
+            buttons.append([{"text": label, "callback_data": f"pick_city_{slug}_{label}", "icon_custom_emoji_id": icon_id}])
+        buttons.append([{"text": "Ввести другой город вручную", "callback_data": "pick_city_custom", "icon_custom_emoji_id": TG_EMOJI_PENCIL}])
+        buttons.append([{"text": "Назад к товарам", "callback_data": "add_wizard_product", "icon_custom_emoji_id": TG_EMOJI_BACK}])
         kb = {"inline_keyboard": buttons}
         self.render_menu(chat_id, text, kb, message_id=message_id)
 
@@ -385,49 +402,49 @@ class AvitoTelegramBot:
         searches = list_searches(user_id=chat_id)
         if not searches:
             text = (
-                "📋 <b>АКТИВНЫЕ РАДАРЫ</b>\n\n"
+                f"{tg_e(TG_EMOJI_LIST, '🗂')} <b>АКТИВНЫЕ РАДАРЫ</b>\n\n"
                 "У вас пока нет сохранённых поисков.\n"
                 "Нажмите кнопку ниже, чтобы запустить первый радар!"
             )
             kb = {
                 "inline_keyboard": [
-                    [{"text": "➕ ДОБАВИТЬ НОВЫЙ РАДАР", "callback_data": "menu_add"}],
-                    [{"text": "🔙 В главное меню", "callback_data": "menu_main"}],
+                    [{"text": "ДОБАВИТЬ НОВЫЙ РАДАР", "callback_data": "menu_add", "icon_custom_emoji_id": TG_EMOJI_PLUS}],
+                    [{"text": "В главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}],
                 ]
             }
             self.render_menu(chat_id, text, kb, message_id=message_id)
             return
 
-        text = f"📋 <b>АКТИВНЫЕ РАДАРЫ ({len(searches)} шт.):</b>\n\n"
+        text = f"{tg_e(TG_EMOJI_LIST, '🗂')} <b>АКТИВНЫЕ РАДАРЫ ({len(searches)} шт.):</b>\n\n"
         buttons = []
         for idx, s in enumerate(searches, start=1):
             listings = load_listings(s)
             pmin_info = f" · от {s.min_price:,} ₽" if s.min_price else ""
             acc_status = "ВКЛ ✅" if getattr(s, "exclude_accessories", True) else "ВЫКЛ ❌"
             text += f"<b>{idx}. {html.escape(s.title)}</b>\n"
-            text += f"   📍 {html.escape(s.city)} · В базе: {len(listings)} лотов{pmin_info} · Без аксов: {acc_status}\n\n"
+            text += f"   {tg_e(TG_EMOJI_PIN, '📍')} {html.escape(s.city)} · В базе: {len(listings)} лотов{pmin_info} · Без аксов: {acc_status}\n\n"
             buttons.append([
-                {"text": f"🛡 Без аксов ({acc_status})", "callback_data": f"toggle_acc_{s.name}"},
-                {"text": f"💰 Порог ({s.min_price or '0'} ₽)", "callback_data": f"set_pmin_{s.name}"},
+                {"text": f"Без аксов ({acc_status})", "callback_data": f"toggle_acc_{s.name}", "icon_custom_emoji_id": TG_EMOJI_SHIELD},
+                {"text": f"Порог ({s.min_price or '0'} ₽)", "callback_data": f"set_pmin_{s.name}", "icon_custom_emoji_id": TG_EMOJI_PRICE_TAG},
             ])
             buttons.append([
-                {"text": f"📊 Скачать Excel — {s.title}", "callback_data": f"action_scan_{s.name}"},
-                {"text": f"🗑 Удалить «{s.title}»", "callback_data": f"action_del_{s.name}"},
+                {"text": f"Скачать Excel — {s.title}", "callback_data": f"action_scan_{s.name}", "icon_custom_emoji_id": TG_EMOJI_CHART},
+                {"text": f"Удалить «{s.title}»", "callback_data": f"action_del_{s.name}", "icon_custom_emoji_id": TG_EMOJI_TRASH},
             ])
 
-        buttons.append([{"text": "➕ СОЗДАТЬ ЕЩЁ РАДАР", "callback_data": "menu_add"}])
-        buttons.append([{"text": "🔙 В главное меню", "callback_data": "menu_main"}])
+        buttons.append([{"text": "СОЗДАТЬ ЕЩЁ РАДАР", "callback_data": "menu_add", "icon_custom_emoji_id": TG_EMOJI_PLUS}])
+        buttons.append([{"text": "В главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}])
 
         kb = {"inline_keyboard": buttons}
         self.render_menu(chat_id, text, kb, message_id=message_id)
 
     def send_settings_menu(self, chat_id: int, message_id: int | None = None) -> None:
         self.settings = load_settings()
-        priv_text = "👤 Продавцы: ТОЛЬКО ЧАСТНИКИ ✅" if self.settings.alert_private_only else "👥 Продавцы: ВСЕ (с магазинами) ❌"
-        junk_text = "🛡 Анти-мусор и байт-цены: ВКЛЮЧЕНО ✅" if self.settings.alert_filter_junk else "⚠️ Анти-мусор: ВЫКЛЮЧЕНО ❌"
-        acc_text = "🛡 Исключать аксессуары: ВКЛЮЧЕНО ✅" if getattr(self.settings, "alert_filter_accessories", True) else "⚠️ Исключать аксессуары: ВЫКЛЮЧЕНО ❌"
+        priv_text = "Продавцы: ТОЛЬКО ЧАСТНИКИ ✅" if self.settings.alert_private_only else "Продавцы: ВСЕ (с магазинами) ❌"
+        junk_text = "Анти-мусор и байт-цены: ВКЛЮЧЕНО ✅" if self.settings.alert_filter_junk else "Анти-мусор: ВЫКЛЮЧЕНО ❌"
+        acc_text = "Исключать аксессуары: ВКЛЮЧЕНО ✅" if getattr(self.settings, "alert_filter_accessories", True) else "Исключать аксессуары: ВЫКЛЮЧЕНО ❌"
         text = (
-            "⚙️ <b>НАСТРОЙКИ МОНИТОРИНГА 24/7</b>\n\n"
+            f"{tg_e(TG_EMOJI_GEAR, '⚙')} <b>НАСТРОЙКИ МОНИТОРИНГА 24/7</b>\n\n"
             f"• Проверка новинок: <b>каждые {self.settings.watch_interval:.0f} сек</b>\n"
             f"• Фильтр продавцов: <b>{'Только частники' if self.settings.alert_private_only else 'Все предложения'}</b>\n"
             f"• Фильтр фейковых цен (100 ₽): <b>{'Активен ✅' if self.settings.alert_filter_junk else 'Выключен'}</b>\n"
@@ -437,13 +454,13 @@ class AvitoTelegramBot:
         )
         kb = {
             "inline_keyboard": [
-                [{"text": priv_text, "callback_data": "set_toggle_private"}],
-                [{"text": junk_text, "callback_data": "set_toggle_junk"}],
-                [{"text": acc_text, "callback_data": "set_toggle_accessories"}],
-                [{"text": "⏱ Проверка раз в 1 минуту", "callback_data": "set_interval_60"}],
-                [{"text": "⏱ Проверка раз в 2 минуты", "callback_data": "set_interval_120"}],
-                [{"text": "⏱ Проверка раз в 5 минут", "callback_data": "set_interval_300"}],
-                [{"text": "🔙 В главное меню", "callback_data": "menu_main"}],
+                [{"text": priv_text, "callback_data": "set_toggle_private", "icon_custom_emoji_id": TG_EMOJI_PROFILE}],
+                [{"text": junk_text, "callback_data": "set_toggle_junk", "icon_custom_emoji_id": TG_EMOJI_SHIELD}],
+                [{"text": acc_text, "callback_data": "set_toggle_accessories", "icon_custom_emoji_id": TG_EMOJI_SHIELD}],
+                [{"text": "Проверка раз в 1 минуту", "callback_data": "set_interval_60", "icon_custom_emoji_id": TG_EMOJI_CLOCK}],
+                [{"text": "Проверка раз в 2 минуты", "callback_data": "set_interval_120", "icon_custom_emoji_id": TG_EMOJI_CLOCK}],
+                [{"text": "Проверка раз в 5 минут", "callback_data": "set_interval_300", "icon_custom_emoji_id": TG_EMOJI_CLOCK}],
+                [{"text": "В главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}],
             ]
         }
         self.render_menu(chat_id, text, kb, message_id=message_id)
@@ -453,7 +470,7 @@ class AvitoTelegramBot:
     def process_create_search(self, chat_id: int, url: str, custom_name: str | None = None, message_id: int | None = None) -> None:
         self.render_menu(
             chat_id,
-            "⏳ <b>Анализирую параметры и фильтры на Авито...</b>\nПодождите пару секунд.",
+            f"{tg_e(TG_EMOJI_HOURGLASS, '⌛️')} <b>Анализирую параметры и фильтры на Авито...</b>\nПодождите пару секунд.",
             message_id=message_id,
         )
         client = AvitoClient(delay=1.0)
@@ -470,29 +487,29 @@ class AvitoTelegramBot:
                     counter += 1
 
             rec = create_search_from_url(client, url, custom_name=resolved_name, user_id=chat_id)
-            pmin_str = f"\n💰 Мин. цена: {rec.min_price:,} ₽" if rec.min_price else ""
+            pmin_str = f"\n{tg_e(TG_EMOJI_PRICE_TAG, '🏷')} Мин. цена: {rec.min_price:,} ₽" if rec.min_price else ""
             text = (
-                f"✅ <b>Поиск успешно настроен и сохранён!</b>\n\n"
+                f"{tg_e(TG_EMOJI_CHECK, '✅')} <b>Поиск успешно настроен и сохранён!</b>\n\n"
                 f"📌 <b>{html.escape(rec.title)}</b>\n"
-                f"📍 Город: {html.escape(rec.city)}{pmin_str}\n"
-                f"🏷 Категория: {html.escape(rec.category_type)}\n"
+                f"{tg_e(TG_EMOJI_PIN, '📍')} Город: {html.escape(rec.city)}{pmin_str}\n"
+                f"{tg_e(TG_EMOJI_TAG, '🏷')} Категория: {html.escape(rec.category_type)}\n"
                 f"🔑 Имя: <code>{rec.name}</code>\n\n"
                 f"Что сделать прямо сейчас?"
             )
             kb = {
                 "inline_keyboard": [
-                    [{"text": "📊 Скачать Excel", "callback_data": f"action_scan_{rec.name}"}],
-                    [{"text": f"💰 Мин. цена ({rec.min_price or 'нет'})", "callback_data": f"set_pmin_{rec.name}"}],
-                    [{"text": "📋 Перейти к моим поискам", "callback_data": "menu_list"}],
-                    [{"text": "🔙 В главное меню", "callback_data": "menu_main"}],
+                    [{"text": "Скачать Excel", "callback_data": f"action_scan_{rec.name}", "icon_custom_emoji_id": TG_EMOJI_CHART}],
+                    [{"text": f"Мин. цена ({rec.min_price or 'нет'})", "callback_data": f"set_pmin_{rec.name}", "icon_custom_emoji_id": TG_EMOJI_PRICE_TAG}],
+                    [{"text": "Перейти к моим поискам", "callback_data": "menu_list", "icon_custom_emoji_id": TG_EMOJI_LIST}],
+                    [{"text": "В главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}],
                 ]
             }
             self.render_menu(chat_id, text, kb, message_id=message_id)
         except Exception as exc:
             self.render_menu(
                 chat_id,
-                f"❌ <b>Не удалось добавить поиск:</b> {html.escape(str(exc))}\nПопробуйте ещё раз или скопируйте другую ссылку.",
-                {"inline_keyboard": [[{"text": "🔙 В главное меню", "callback_data": "menu_main"}]]},
+                f"{tg_e(TG_EMOJI_CROSS, '❌')} <b>Не удалось добавить поиск:</b> {html.escape(str(exc))}\nПопробуйте ещё раз или скопируйте другую ссылку.",
+                {"inline_keyboard": [[{"text": "В главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}]]},
                 message_id=message_id,
             )
 
@@ -526,14 +543,16 @@ class AvitoTelegramBot:
             "inline_keyboard": [
                 [
                     {
-                        "text": "⚡️ ТЕРМИНАЛ РАДАРА (MINI APP)",
+                        "text": "ТЕРМИНАЛ РАДАРА (MINI APP)",
                         "web_app": {"url": miniapp_url},
+                        "icon_custom_emoji_id": TG_EMOJI_LIGHTNING,
                     }
                 ],
                 [
                     {
-                        "text": "🔙 Главное меню",
+                        "text": "Главное меню",
                         "callback_data": "menu_main",
+                        "icon_custom_emoji_id": TG_EMOJI_BACK,
                     }
                 ]
             ]
@@ -591,6 +610,86 @@ class AvitoTelegramBot:
         if text.startswith("/avatar"):
             session.state = "IDLE"
             self.send_avatar_message(chat_id)
+            return
+
+        # Обработка шагов визарда, ожидающих текстовый ввод пользователя
+        state = session.state
+        if state == "WAIT_CUSTOM_QUERY":
+            if text:
+                session.temp_query = text[:120]
+                session.state = "IDLE"
+                self.send_city_selection(chat_id, message_id=session.last_menu_message_id)
+            else:
+                session.state = "IDLE"
+                self.send_main_menu(chat_id)
+            return
+
+        if state == "WAIT_CUSTOM_CITY":
+            session.state = "IDLE"
+            slug = transliterate(text).replace(" ", "_").lower().strip("_")
+            if not text or not re.fullmatch(r"[a-z0-9_-]+", slug):
+                session.state = "WAIT_CUSTOM_CITY"
+                self.render_menu(
+                    chat_id,
+                    f"{tg_e(TG_EMOJI_WARN, '❗️')} Не удалось распознать город. Введите название ещё раз (например: <code>Челябинск</code>):",
+                    {"inline_keyboard": [[{"text": "Отмена", "callback_data": "add_wizard_product", "icon_custom_emoji_id": TG_EMOJI_BACK}]]},
+                    message_id=session.last_menu_message_id,
+                )
+                return
+            encoded_q = urllib.parse.quote(session.temp_query)
+            if session.temp_category_path:
+                target_url = f"https://www.avito.ru/{slug}/{session.temp_category_path}?q={encoded_q}"
+            else:
+                target_url = f"https://www.avito.ru/{slug}?q={encoded_q}"
+            if session.temp_pmin:
+                target_url += f"&pmin={session.temp_pmin}"
+            clean_q = transliterate(session.temp_query).replace(" ", "_").lower()
+            c_name = re.sub(r"[^a-z0-9_-]+", "_", f"u{chat_id}_{clean_q}_{slug}").strip("_")
+            if not is_valid_search_name(c_name):
+                session.state = "WAIT_CUSTOM_QUERY"
+                self.render_menu(
+                    chat_id,
+                    f"{tg_e(TG_EMOJI_WARN, '❗️')} По этому запросу не получается безопасное имя поиска. Введите другое название товара:",
+                    {"inline_keyboard": [[{"text": "Отмена", "callback_data": "add_wizard_product", "icon_custom_emoji_id": TG_EMOJI_BACK}]]},
+                    message_id=session.last_menu_message_id,
+                )
+                return
+            self.process_create_search(chat_id, target_url, custom_name=c_name, message_id=session.last_menu_message_id)
+            return
+
+        if state == "WAIT_URL":
+            match = re.search(r"https?://[^\s]+", text)
+            if match and "avito.ru" in match.group(0):
+                session.state = "IDLE"
+                self.process_create_search(chat_id, match.group(0), message_id=session.last_menu_message_id)
+            else:
+                self.render_menu(
+                    chat_id,
+                    f"{tg_e(TG_EMOJI_WARN, '❗️')} Это не ссылка Авито. Отправьте ссылку вида <code>https://www.avito.ru/...</code> "
+                    "(можно просто скопировать адрес из браузера):",
+                    {"inline_keyboard": [[{"text": "Отмена", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}]]},
+                    message_id=session.last_menu_message_id,
+                )
+            return
+
+        if state.startswith("WAIT_PMIN_"):
+            search_name = state[len("WAIT_PMIN_"):]
+            digits = re.sub(r"[^\d]", "", text)
+            if not digits:
+                self.render_menu(
+                    chat_id,
+                    f"{tg_e(TG_EMOJI_WARN, '❗️')} Отправьте целое число (например: <code>35000</code>) или <code>0</code>, чтобы снять ограничение:",
+                    {"inline_keyboard": [[{"text": "Отмена", "callback_data": "menu_list", "icon_custom_emoji_id": TG_EMOJI_BACK}]]},
+                    message_id=session.last_menu_message_id,
+                )
+                return
+            session.state = "IDLE"
+            s = load_search(search_name)
+            if s:
+                value = int(digits)
+                s.min_price = value if value > 0 else None
+                save_search(s)
+            self.send_searches_list(chat_id, message_id=session.last_menu_message_id)
             return
 
         # Direct Avito link detection (support quick adding via link if user pastes one)
@@ -665,7 +764,7 @@ class AvitoTelegramBot:
                         new_row = []
                         for btn in row:
                             if btn.get("callback_data") == data:
-                                new_row.append({"text": "👁️ Лот скрыт", "callback_data": "noop"})
+                                new_row.append({"text": "Лот скрыт", "callback_data": "noop", "icon_custom_emoji_id": TG_EMOJI_EYE_OFF})
                             else:
                                 new_row.append(btn)
                         new_rows.append(new_row)
@@ -688,9 +787,9 @@ class AvitoTelegramBot:
                 session.temp_pmin = 0
                 self.render_menu(
                     chat_id,
-                    "✏️ <b>Введите название товара</b> (например: <code>iPhone 15</code>, <code>RTX 4060</code>, <code>PlayStation 5</code>):\n\n"
+                    f"{tg_e(TG_EMOJI_PENCIL, '✏️')} <b>Введите название товара</b> (например: <code>iPhone 15</code>, <code>RTX 4060</code>, <code>PlayStation 5</code>):\n\n"
                     "<i>Отправьте название сообщением в чат.</i>",
-                    {"inline_keyboard": [[{"text": "🔙 Отмена", "callback_data": "add_wizard_product"}]]},
+                    {"inline_keyboard": [[{"text": "Отмена", "callback_data": "add_wizard_product", "icon_custom_emoji_id": TG_EMOJI_BACK}]]},
                     message_id=message_id,
                 )
             else:
@@ -713,9 +812,9 @@ class AvitoTelegramBot:
                 session.state = "WAIT_CUSTOM_CITY"
                 self.render_menu(
                     chat_id,
-                    "✏️ <b>Введите название города</b> (например: <code>Челябинск</code>, <code>Сочи</code>, <code>Тюмень</code>):\n\n"
+                    f"{tg_e(TG_EMOJI_PENCIL, '✏️')} <b>Введите название города</b> (например: <code>Челябинск</code>, <code>Сочи</code>, <code>Тюмень</code>):\n\n"
                     "<i>Отправьте название сообщением в чат.</i>",
-                    {"inline_keyboard": [[{"text": "🔙 Отмена", "callback_data": "add_wizard_product"}]]},
+                    {"inline_keyboard": [[{"text": "Отмена", "callback_data": "add_wizard_product", "icon_custom_emoji_id": TG_EMOJI_BACK}]]},
                     message_id=message_id,
                 )
             else:
@@ -728,15 +827,23 @@ class AvitoTelegramBot:
                     target_url += f"&pmin={session.temp_pmin}"
                 clean_q = transliterate(session.temp_query).replace(" ", "_")
                 c_name = re.sub(r"[^a-z0-9_-]+", "_", f"u{chat_id}_{clean_q}_{slug}").strip("_")
+                if not is_valid_search_name(c_name):
+                    self.render_menu(
+                        chat_id,
+                        f"{tg_e(TG_EMOJI_WARN, '❗️')} Не удалось сформировать корректное имя поиска. Попробуйте другой запрос.",
+                        {"inline_keyboard": [[{"text": "Назад к товарам", "callback_data": "add_wizard_product", "icon_custom_emoji_id": TG_EMOJI_BACK}]]},
+                        message_id=message_id,
+                    )
+                    return
                 self.process_create_search(chat_id, target_url, custom_name=c_name, message_id=message_id)
 
         elif data == "add_by_url":
             session.state = "WAIT_URL"
             self.render_menu(
                 chat_id,
-                "🔗 <b>Отправьте сюда скопированную ссылку с Авито</b> (с любыми фильтрами):\n\n"
+                f"{tg_e(TG_EMOJI_LINK, '🔗')} <b>Отправьте сюда скопированную ссылку с Авито</b> (с любыми фильтрами):\n\n"
                 "<i>Вставьте ссылку сообщением в чат.</i>",
-                {"inline_keyboard": [[{"text": "🔙 Отмена", "callback_data": "menu_main"}]]},
+                {"inline_keyboard": [[{"text": "Отмена", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}]]},
                 message_id=message_id,
             )
 
@@ -744,15 +851,15 @@ class AvitoTelegramBot:
             search_name = data[len("action_scan_"):]
             s = load_search(search_name)
             if not s:
-                self.render_menu(chat_id, f"❌ Поиск «{search_name}» не найден.", message_id=message_id)
+                self.render_menu(chat_id, f"{tg_e(TG_EMOJI_CROSS, '❌')} Поиск «{search_name}» не найден.", message_id=message_id)
                 return
 
             self.render_menu(
                 chat_id,
-                f"⏳ <b>Формирую Excel таблицу для «{html.escape(s.title)}»...</b>\n\n"
+                f"{tg_e(TG_EMOJI_HOURGLASS, '⌛️')} <b>Формирую Excel таблицу для «{html.escape(s.title)}»...</b>\n\n"
                 f"Собираю объявления, рассчитываю медианы цен и анализирую выгоду.\n"
                 f"Файл таблицы сейчас появится ниже 👇",
-                {"inline_keyboard": [[{"text": "📋 К моим поискам", "callback_data": "menu_list"}]]},
+                {"inline_keyboard": [[{"text": "К моим поискам", "callback_data": "menu_list", "icon_custom_emoji_id": TG_EMOJI_LIST}]]},
                 message_id=message_id,
             )
 
@@ -763,14 +870,14 @@ class AvitoTelegramBot:
                     self.send_document(
                         chat_id,
                         excel_path,
-                        caption=f"📊 <b>Таблица готова!</b>\nПоиск: <b>{html.escape(s.title)}</b>\nСобрано лотов: <b>{count}</b> шт.",
+                        caption=f"{tg_e(TG_EMOJI_CHART, '📊')} <b>Таблица готова!</b>\nПоиск: <b>{html.escape(s.title)}</b>\nСобрано лотов: <b>{count}</b> шт.",
                     )
                     self.send_searches_list(chat_id, message_id=message_id)
                 except Exception as exc:
                     self.render_menu(
                         chat_id,
-                        f"❌ Ошибка сбора: {html.escape(str(exc))}",
-                        {"inline_keyboard": [[{"text": "🔙 В меню", "callback_data": "menu_main"}]]},
+                        f"{tg_e(TG_EMOJI_CROSS, '❌')} Ошибка сбора: {html.escape(str(exc))}",
+                        {"inline_keyboard": [[{"text": "В меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}]]},
                         message_id=message_id,
                     )
 
@@ -791,11 +898,11 @@ class AvitoTelegramBot:
             pmin_curr = f"{s.min_price:,} ₽" if s.min_price else "не установлена"
             self.render_menu(
                 chat_id,
-                f"💰 <b>Настройка минимальной цены для «{html.escape(s.title)}»</b>\n\n"
+                f"{tg_e(TG_EMOJI_PRICE_TAG, '🏷')} <b>Настройка минимальной цены для «{html.escape(s.title)}»</b>\n\n"
                 f"Текущая мин. цена: <b>{pmin_curr}</b>\n\n"
-                f"✏️ <b>Отправьте число в чат</b> (например: <code>35000</code>), чтобы отсечь мусор и байт-цены.\n"
+                f"{tg_e(TG_EMOJI_PENCIL, '✏️')} <b>Отправьте число в чат</b> (например: <code>35000</code>), чтобы отсечь мусор и байт-цены.\n"
                 f"Или отправьте <code>0</code>, чтобы снять ограничение.",
-                {"inline_keyboard": [[{"text": "🔙 Отмена", "callback_data": "menu_list"}]]},
+                {"inline_keyboard": [[{"text": "Отмена", "callback_data": "menu_list", "icon_custom_emoji_id": TG_EMOJI_BACK}]]},
                 message_id=message_id,
             )
 
@@ -1301,10 +1408,19 @@ def start_healthcheck_server() -> None:
                     logger.warning("Error getting lots: %s", exc)
 
             # Static file serving fallback (js, css, images, etc.)
-            rel_path = path.lstrip("/")
-            if rel_path:
+            rel_path = urllib.parse.unquote(path.lstrip("/"))
+            # Защита от path traversal: запрещаем "..", скрытые файлы и чувствительные каталоги
+            parts = [p for p in rel_path.replace("\\", "/").split("/") if p]
+            path_is_safe = (
+                bool(parts)
+                and all(p not in ("..", ".") and not p.startswith(".") for p in parts)
+                and parts[0] not in ("data", "output", "avito_radar", "backend", "node_modules", "tests")
+            )
+            if path_is_safe:
                 for search_dir in [Path("."), Path("frontend"), Path("web")]:
-                    candidate = (search_dir / rel_path).resolve()
+                    candidate = (search_dir / "/".join(parts)).resolve()
+                    if not candidate.is_relative_to(search_dir.resolve()):
+                        continue
                     if candidate.is_file():
                         ext = candidate.suffix.lower()
                         mime_map = {
@@ -1375,6 +1491,13 @@ def start_healthcheck_server() -> None:
 
                         clean_q = transliterate(query).replace(" ", "_").lower()
                         c_name = re.sub(r"[^a-z0-9_-]+", "_", f"u{uid}_{clean_q}_{city_slug}").strip("_")
+                        if not is_valid_search_name(c_name):
+                            self.send_response(400)
+                            self.send_header("Content-Type", "application/json; charset=utf-8")
+                            self.send_header("Access-Control-Allow-Origin", "*")
+                            self.end_headers()
+                            self.wfile.write(json.dumps({"ok": False, "error": "invalid search name"}).encode("utf-8"))
+                            return
                         encoded_q = urllib.parse.quote(query)
                         target_url = f"https://www.avito.ru/{city_slug}?q={encoded_q}"
                         if min_price > 0:

@@ -38,6 +38,21 @@ TG_EMOJI_SHIELD = "6030445631921721471"     # 🛡
 TG_EMOJI_REPEAT = "6030657343744644592"     # 🔁
 TG_EMOJI_STORE = "5920332557466997677"      # 🏪
 TG_EMOJI_CLOCK = "5983150113483134607"      # ⏰
+TG_EMOJI_GEAR = "6032742198179532882"       # ⚙
+TG_EMOJI_BELL = "6039486778597970865"       # 🔔
+TG_EMOJI_PLUS = "5882207227997066107"       # ➕
+TG_EMOJI_LIST = "5766994197705921104"       # 🗂
+TG_EMOJI_BACK = "5960671702059848143"       # ⬅️
+TG_EMOJI_PENCIL = "6039779802741739617"     # ✏️
+TG_EMOJI_CHART = "5936143551854285132"      # 📊
+TG_EMOJI_DOWNLOAD = "6039802767931871481"   # ⬇️
+TG_EMOJI_PRICE_TAG = "5890727932011223292"  # 🏷
+TG_EMOJI_GLOBE = "5776233299424843260"      # 🌐
+TG_EMOJI_EYE_OFF = "6037243349675544634"    # 👁
+TG_EMOJI_ANALYTICS = "5935913431801532272"  # 📈
+TG_EMOJI_HOURGLASS = "5891211339170326418"  # ⌛️
+TG_EMOJI_CROSS = "5774077015388852135"      # ❌
+TG_EMOJI_TAG = "5886285355279193209"        # 🏷
 
 def tg_e(emoji_id: str, fallback: str) -> str:
     """Format custom Telegram emoji tag."""
@@ -202,6 +217,14 @@ def format_ad_message(search_title: str, item: ParsedItem) -> str:
 class TelegramNotifier:
     def __init__(self, config: TelegramConfig) -> None:
         self.config = config
+
+    def get_me(self) -> dict[str, Any] | None:
+        """Проверка токена через getMe. Возвращает данные бота или None при ошибке."""
+        try:
+            return api_request(self.config.token, "getMe")
+        except Exception as exc:
+            logger.warning("getMe failed: %s", exc)
+            return None
 
     def send_notification(self, search_title: str, item: ParsedItem) -> bool:
         if not self.config.enabled:

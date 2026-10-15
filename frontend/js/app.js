@@ -62,7 +62,11 @@ const SafeStorage = {
         const searchKey = getUserStorageKey('searches');
         const favKey = getUserStorageKey('favorites');
         return new Promise((resolve) => {
+          // The Telegram mock SDK in plain browsers may never call back —
+          // never let cloud sync block the app bootstrap.
+          const timer = setTimeout(resolve, 3000);
           window.Telegram.WebApp.CloudStorage.getItems([searchKey, favKey], (err, values) => {
+            clearTimeout(timer);
             if (!err && values) {
               if (values[searchKey] && !window.localStorage?.getItem(searchKey)) {
                 SafeStorage.setItem(searchKey, values[searchKey]);
@@ -406,6 +410,9 @@ const API_BASE_URL = (typeof window !== 'undefined' && (window.location.hostname
   : (typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://avito-radar.onrender.com');
 
 const ApiService = {
+  // Set when the last server request failed (drives the retry error state UI).
+  networkFailed: false,
+
   async getSearches() {
     const key = getUserStorageKey('searches');
     const uid = getCurrentUserId();
@@ -416,11 +423,14 @@ const ApiService = {
       if (res.ok) {
         const data = await res.json();
         if (data.searches && Array.isArray(data.searches)) {
+          this.networkFailed = false;
           SafeStorage.setItem(key, JSON.stringify(data.searches));
           return data.searches;
         }
       }
+      this.networkFailed = true;
     } catch (err) {
+      this.networkFailed = true;
       console.warn('[API] getSearches network call failed, falling back to cache:', err.message);
     }
 
@@ -521,8 +531,10 @@ const ApiService = {
         headers: getApiHeaders(),
         body: JSON.stringify({ name: id, id: id, user_id: uid })
       });
+      this.networkFailed = !res.ok;
       return res.ok;
     } catch (_) {
+      this.networkFailed = true;
       return false;
     }
   },
@@ -542,6 +554,7 @@ const ApiService = {
       if (res.ok) {
         const data = await res.json();
         if (data.lots && Array.isArray(data.lots)) {
+          this.networkFailed = false;
           const dismissedSet = this.getDismissedIds();
           data.lots.forEach(l => {
             if (dismissedSet.has(String(l.id))) l.isDismissed = true;
@@ -550,7 +563,9 @@ const ApiService = {
           return data.lots;
         }
       }
+      this.networkFailed = true;
     } catch (err) {
+      this.networkFailed = true;
       console.warn('[API] getLots fetch failed, using offline fallback:', err.message);
     }
 
@@ -624,7 +639,9 @@ const State = {
   excludeAccessories: true,
   favorites: [],
   modalLot: null,
-  pendingDeleteId: null
+  pendingDeleteId: null,
+  networkError: false,
+  lastStaleToastAt: null
 };
 
 // Load saved favorites and accessories preference safely
@@ -1008,6 +1025,241 @@ function isItemMatchingSearch(itemTitle, itemDesc, query) {
 }
 
 // ==========================================================================
+// 5.9 SL UI Library Controllers (MIT License, Copyright (c) 2026 SLtowl)
+// Adapted from https://github.com/SLtowl/sl-ui-library — components:
+// matte-glide-toggle, matte-range-slider, matte-like, matte-retry-feedback.
+// Palette lives in css/styles.css; controllers keep their original motion
+// and keyboard / reduced-motion behavior.
+// ==========================================================================
+const SLUI = (() => {
+  const mounted = new WeakMap();
+
+  // matte-toggle controller (selection category) — native checkbox + status
+  function mountToggle(root, { onChange } = {}) {
+    if (mounted.has(root)) return mounted.get(root);
+    if (typeof onChange !== 'undefined' && typeof onChange !== 'function') throw new TypeError('onChange must be a function.');
+    const input = root?.querySelector('input[type="checkbox"]');
+    const status = root?.querySelector('[data-status]');
+    if (!input || !status) throw new TypeError('A native checkbox and visible status are required.');
+    const view = root.ownerDocument.defaultView;
+    const lifecycle = new view.AbortController();
+    const motion = view.matchMedia('(prefers-reduced-motion: reduce)');
+    let feedbackAnimation = null, destroyed = false;
+    const on = (target, type, callback) => target.addEventListener(type, callback, { signal: lifecycle.signal });
+
+    function settle() { feedbackAnimation?.cancel(); feedbackAnimation = null; }
+    function feedback() {
+      if (motion.matches) return;
+      settle();
+      const target = root.querySelector('.sl-toggle__emblem');
+      if (!target?.animate) return;
+      feedbackAnimation = target.animate(
+        [{ transform: 'scale(1)' }, { transform: 'scale(.96)', offset: .36 }, { transform: 'scale(1)' }],
+        { duration: 420, easing: 'cubic-bezier(.4,0,.2,1)' }
+      );
+      const animation = feedbackAnimation;
+      animation.onfinish = () => { if (feedbackAnimation === animation) settle(); };
+    }
+    function render({ animate = false, emit = false } = {}) {
+      if (destroyed) return;
+      root.dataset.checked = String(input.checked);
+      status.textContent = input.checked ? input.dataset.on || 'On' : input.dataset.off || 'Off';
+      status.setAttribute('aria-live', 'polite');
+      if (animate) feedback();
+      else settle();
+      if (emit) {
+        onChange?.(input.checked);
+        root.dispatchEvent(new view.CustomEvent('togglechange', { bubbles: true, composed: true, detail: { checked: input.checked } }));
+      }
+    }
+    function setChecked(value, { emit = false, animate = true } = {}) {
+      if (destroyed) return;
+      input.checked = Boolean(value);
+      render({ animate, emit });
+    }
+
+    on(input, 'change', () => render({ animate: true, emit: true }));
+    on(motion, 'change', () => { if (motion.matches) settle(); });
+    if (input.form) on(input.form, 'reset', () => queueMicrotask(() => setChecked(input.defaultChecked, { animate: false })));
+    render();
+
+    const controller = {
+      setChecked,
+      reset() { setChecked(input.defaultChecked, { animate: false }); },
+      destroy() { if (destroyed) return; destroyed = true; settle(); lifecycle.abort(); mounted.delete(root); },
+      get checked() { return input.checked; },
+    };
+    mounted.set(root, controller);
+    return controller;
+  }
+
+  // matte-slider controller (sliders category) — native range + live output
+  function mountSlider(root, { onChange, formatValue } = {}) {
+    if (mounted.has(root)) return mounted.get(root);
+    if (onChange !== undefined && typeof onChange !== 'function') throw new TypeError('onChange must be a function.');
+    if (formatValue !== undefined && typeof formatValue !== 'function') throw new TypeError('formatValue must be a function.');
+    const inputs = [...root.querySelectorAll('input[type="range"]')];
+    const output = root.querySelector('[data-output]');
+    if (!inputs.length || !output) throw new TypeError('A native range and output are required.');
+    const lifecycle = new AbortController();
+    const view = root.ownerDocument.defaultView;
+    const dual = inputs.length === 2;
+    const labels = root.dataset.labels?.split(',');
+    const format = value => formatValue ? String(formatValue(value)) : dual ? '$' + value : value + '%';
+    const track = root.querySelector('.slider-track');
+    let dragging = null, destroyed = false;
+    const values = () => inputs.map(input => input.valueAsNumber);
+    const percent = input => (input.valueAsNumber - Number(input.min)) / (Number(input.max) - Number(input.min)) * 100;
+    function render(changed, emit = false) {
+      if (destroyed) return;
+      if (dual) {
+        if (inputs[0].valueAsNumber > inputs[1].valueAsNumber) {
+          if (changed === inputs[0]) inputs[0].value = inputs[1].value;
+          else inputs[1].value = inputs[0].value;
+        }
+        root.style.setProperty('--low', percent(inputs[0]) + '%');
+        root.style.setProperty('--high', percent(inputs[1]) + '%');
+        inputs[0].setAttribute('aria-valuemax', inputs[1].value);
+        inputs[1].setAttribute('aria-valuemin', inputs[0].value);
+        for (const input of inputs) input.setAttribute('aria-valuetext', format(input.valueAsNumber));
+        output.textContent = format(inputs[0].valueAsNumber) + ' – ' + format(inputs[1].valueAsNumber);
+      } else {
+        const p = percent(inputs[0]);
+        root.style.setProperty('--high', p + '%');
+        root.style.setProperty('--position', p + '%');
+        if (root.hasAttribute('data-centered')) {
+          const center = (0 - Number(inputs[0].min)) / (Number(inputs[0].max) - Number(inputs[0].min)) * 100;
+          root.style.setProperty('--low', Math.min(p, center) + '%');
+          root.style.setProperty('--high', Math.max(p, center) + '%');
+        }
+        output.textContent = labels ? labels[inputs[0].valueAsNumber] : format(inputs[0].valueAsNumber);
+        inputs[0].setAttribute('aria-valuetext', output.textContent);
+        for (const marker of root.querySelectorAll('[data-step]')) marker.classList.toggle('is-current', Number(marker.dataset.step) === inputs[0].valueAsNumber);
+      }
+      if (emit) {
+        onChange?.(values());
+        root.dispatchEvent(new view.CustomEvent('sliderchange', { bubbles: true, detail: { values: values() } }));
+      }
+    }
+    root.addEventListener('input', event => { if (inputs.includes(event.target)) render(event.target, true); }, { signal: lifecycle.signal });
+    // In the dual control, native thumbs drag normally. Empty-track dragging uses
+    // the nearest thumb, with pointer capture, while both inputs remain focusable.
+    if (dual) {
+      const updatePointer = event => {
+        const rect = track.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left - 12) / (rect.width - 24)));
+        const min = Number(dragging.min), max = Number(dragging.max), step = Number(dragging.step) || 1;
+        dragging.value = String(min + Math.round(ratio * (max - min) / step) * step);
+        dragging.dispatchEvent(new view.Event('input', { bubbles: true }));
+      };
+      track.addEventListener('pointerdown', event => {
+        if (event.button !== 0 || inputs.includes(event.target) || dragging) return;
+        const candidates = inputs.filter(input => !input.disabled);
+        if (!candidates.length) return;
+        const rect = track.getBoundingClientRect();
+        const p = (event.clientX - rect.left - 12) / (rect.width - 24) * 100;
+        dragging = candidates.reduce((nearest, input) => Math.abs(percent(input) - p) < Math.abs(percent(nearest) - p) ? input : nearest);
+        dragging.focus({ preventScroll: true });
+        track.setPointerCapture(event.pointerId);
+        updatePointer(event);
+        event.preventDefault();
+      }, { signal: lifecycle.signal });
+      track.addEventListener('pointermove', event => { if (dragging && track.hasPointerCapture(event.pointerId)) updatePointer(event); }, { signal: lifecycle.signal });
+      const finish = () => { const input = dragging; dragging = null; input?.dispatchEvent(new view.Event('change', { bubbles: true })); };
+      track.addEventListener('pointerup', finish, { signal: lifecycle.signal });
+      track.addEventListener('pointercancel', finish, { signal: lifecycle.signal });
+      track.addEventListener('lostpointercapture', finish, { signal: lifecycle.signal });
+    }
+    function reset() {
+      if (destroyed) return;
+      inputs.forEach(input => { input.value = input.defaultValue; });
+      render();
+    }
+    inputs[0].form?.addEventListener('reset', () => queueMicrotask(reset), { signal: lifecycle.signal });
+    // History restoration can replace native values after module initialization.
+    view.addEventListener('pageshow', () => render(), { signal: lifecycle.signal });
+    render();
+    const controller = { reset, get values() { return values(); }, destroy() { destroyed = true; dragging = null; lifecycle.abort(); mounted.delete(root); } };
+    mounted.set(root, controller);
+    return controller;
+  }
+
+  // matte-like heartbeat (buttons category) — pulse a heart element in place
+  function pulseLikeHeart(heart, pressed) {
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    if (motion.matches || !heart?.animate) return;
+    const frames = pressed
+      ? [{ transform: 'scale(1)' }, { transform: 'scale(.9)', offset: .18 }, { transform: 'scale(1.14)', offset: .5 }, { transform: 'scale(.985)', offset: .8 }, { transform: 'scale(1)' }]
+      : [{ transform: 'scale(1)' }, { transform: 'scale(.94)', offset: .4 }, { transform: 'scale(1)' }];
+    heart.animate(frames, { duration: pressed ? 620 : 420, easing: 'cubic-bezier(.4,0,.2,1)' });
+  }
+
+  // matte-retry controller (feedback category) — actionable async error state.
+  // Strings localized to Russian; state machine matches the original controller.
+  function mountRetry(root, { onAction } = {}) {
+    if (mounted.has(root)) return mounted.get(root);
+    if (typeof onAction !== 'function') throw new TypeError('onAction must be a function.');
+    const q = s => root.querySelector(s);
+    const card = q('.fb-retry-card');
+    const button = q('[data-action="retry"]');
+    const titleEl = q('[data-title]');
+    const detailEl = q('[data-detail]');
+    const stateLabel = q('[data-state-label]');
+    const live = q('[data-live]');
+    const error = q('[data-error]');
+    if (!card || !button || !titleEl || !live || !error) throw new TypeError('Retry needs its card, button, title and live regions.');
+    const view = root.ownerDocument.defaultView;
+    const lifecycle = new view.AbortController();
+    let destroyed = false, state = 'error', request = null;
+
+    function announce(text, isError = false) { live.textContent = isError ? '' : text; error.textContent = isError ? text : ''; }
+    function setState(value) {
+      state = value;
+      card.dataset.state = value;
+      const busy = value === 'pending';
+      button.setAttribute('aria-disabled', String(busy || value === 'complete'));
+      button.setAttribute('aria-busy', String(busy));
+      titleEl.textContent = busy ? 'Повторяем запрос' : value === 'complete' ? 'Данные загружены' : 'Не удалось загрузить данные';
+      detailEl.textContent = busy ? 'Проверяем соединение с сервером…' : value === 'complete' ? 'Продолжайте с того же места.' : 'Сервер не отвечает. Ваши радары и избранное сохранены на этом устройстве.';
+      if (stateLabel) stateLabel.textContent = busy ? 'ПОДОЖДИТЕ' : value === 'complete' ? 'ОНЛАЙН' : 'ОШИБКА ЗАПРОСА';
+      button.textContent = busy ? 'Пробуем…' : value === 'complete' ? 'Обновить' : 'Повторить';
+    }
+    async function run() {
+      if (destroyed || state === 'pending') return false;
+      const current = new view.AbortController();
+      request = current;
+      setState('pending');
+      announce('Запрос запущен.');
+      try {
+        await onAction({ signal: current.signal });
+        if (destroyed || current.signal.aborted) return false;
+        request = null;
+        setState('complete');
+        announce('Данные загружены.');
+        return true;
+      } catch (err) {
+        if (destroyed) return false;
+        request = null;
+        setState('error');
+        announce('Не удалось выполнить запрос. Попробуйте ещё раз.', err?.name !== 'AbortError');
+        return false;
+      }
+    }
+    button.addEventListener('click', () => { if (button.getAttribute('aria-disabled') !== 'true') void run(); }, { signal: lifecycle.signal });
+    setState('error');
+    const controller = {
+      run,
+      get state() { return state; },
+      destroy() { if (destroyed) return; destroyed = true; request?.abort(); lifecycle.abort(); mounted.delete(root); }
+    };
+    mounted.set(root, controller);
+    return controller;
+  }
+
+  return { mountToggle, mountSlider, mountRetry, pulseLikeHeart };
+})();
+
+// ==========================================================================
 // 6. DOM Elements Cache
 // ==========================================================================
 let DOM = {};
@@ -1235,10 +1487,15 @@ async function scanSearch(id) {
   ScanProgress.start(title, city);
 
   try {
-    await ApiService.triggerScan(id);
+    const scanOk = await ApiService.triggerScan(id);
     await loadData();
     const lotsCount = State.lots.filter(l => l.searchId === id && !l.isDismissed).length;
     ScanProgress.finish(lotsCount);
+    if (!scanOk && ApiService.networkFailed) {
+      TelegramService.haptic('error');
+      showToast('Сервер не отвечает — сканирование не запустилось', 'error');
+      return;
+    }
     TelegramService.haptic(lotsCount > 0 ? 'success' : 'medium');
     renderView();
     if (lotsCount > 0) {
@@ -1315,14 +1572,18 @@ function toggleFav(event, lotId) {
   TelegramService.haptic('light');
   const strId = String(lotId);
   const idx = State.favorites.indexOf(strId);
-  if (idx > -1) {
-    State.favorites.splice(idx, 1);
-  } else {
+  const nowFav = idx === -1;
+  if (nowFav) {
     State.favorites.push(strId);
+  } else {
+    State.favorites.splice(idx, 1);
   }
   SafeStorage.setItem(getUserStorageKey('favorites'), JSON.stringify(State.favorites));
   updateStats();
   renderView();
+  // SL UI matte-like heartbeat on the freshly rendered heart icon
+  const heart = document.querySelector(`.lot-card[data-id="${CSS.escape(strId)}"] .card-fav-btn .sl-like__heart`);
+  SLUI.pulseLikeHeart(heart, nowFav);
 }
 
 async function vanishLot(event, lotId) {
@@ -1430,8 +1691,14 @@ function openAvito(event, url) {
 }
 
 function setQueryPreset(q, minP) {
+  TelegramService.haptic('light');
   const qInput = document.getElementById('newQueryInput');
   if (qInput) qInput.value = q;
+  const priceInput = document.getElementById('newMinPrice');
+  if (priceInput && typeof minP === 'number') {
+    priceInput.value = String(Math.min(Number(priceInput.max), Math.max(Number(priceInput.min), minP)));
+    priceInput.dispatchEvent(new Event('input', { bubbles: true }));
+  }
 }
 
 async function quickAddPreset(query, city, minPrice) {
@@ -1482,6 +1749,25 @@ async function loadData() {
 
   State.searches = await ApiService.getSearches();
   State.lots = await ApiService.getLots({ includeDismissed: true });
+
+  // Distinguish "genuinely empty" from "server unreachable with empty cache"
+  const wasOffline = State.networkError;
+  State.networkError = ApiService.networkFailed && State.searches.length === 0 && State.lots.length === 0;
+  if (State.networkError && !wasOffline) {
+    TelegramService.haptic('error');
+    showToast('Нет соединения с сервером', 'error');
+  } else if (wasOffline && !ApiService.networkFailed) {
+    TelegramService.haptic('success');
+    showToast('Соединение восстановлено', 'success');
+  } else if (ApiService.networkFailed && !State.networkError) {
+    // Cache is shown — still tell the user the data may be stale (throttled)
+    const now = Date.now();
+    if (!State.lastStaleToastAt || now - State.lastStaleToastAt > 20000) {
+      State.lastStaleToastAt = now;
+      TelegramService.haptic('warning');
+      showToast('Сервер недоступен — показаны сохранённые данные', 'error');
+    }
+  }
 
   populateSearchSelector();
   updateDeleteCurrentButtonVisibility();
@@ -1779,6 +2065,36 @@ function updateStats() {
 function renderEmptyState() {
   if (!DOM.emptyState) return;
 
+  // SL UI matte-retry-feedback: actionable offline state instead of a silent fail
+  if (State.networkError) {
+    DOM.emptyState.innerHTML = `
+      <div class="fb-retry-scope" data-feedback="retry" tabindex="-1">
+        <div class="fb-retry-card" data-state="error">
+          <span class="fb-icon"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.2 7a8 8 0 0 1 13.4-1L20 8M4 16l1.4 2A8 8 0 0 0 18.8 17"/></svg></span>
+          <h3 data-title>Не удалось загрузить данные</h3>
+          <p data-detail>Сервер не отвечает. Ваши радары и избранное сохранены на этом устройстве.</p>
+          <div class="fb-row">
+            <button type="button" class="fb-button fb-button--light" data-action="retry">Повторить</button>
+            <small data-state-label>ОШИБКА ЗАПРОСА</small>
+          </div>
+        </div>
+        <span class="fb-sr" data-live role="status" aria-live="polite" aria-atomic="true"></span>
+        <span class="fb-sr" data-error role="alert" aria-atomic="true"></span>
+      </div>
+    `;
+    const retryRoot = DOM.emptyState.querySelector('.fb-retry-scope');
+    if (retryRoot) {
+      SLUI.mountRetry(retryRoot, {
+        onAction: async () => {
+          TelegramService.haptic('light');
+          await loadData();
+          if (ApiService.networkFailed) throw new Error('server-unreachable');
+        }
+      });
+    }
+    return;
+  }
+
   if (State.searches.length === 0) {
     DOM.emptyState.innerHTML = `
       <div class="onboarding-card" style="text-align: center; padding: 32px 20px; background: var(--surface-card); border-radius: 18px; border: 1px solid var(--border-subtle); max-width: 480px; margin: 12px auto; box-shadow: var(--shadow-card);">
@@ -2041,9 +2357,10 @@ function createLotCard(lot) {
   const mediaHtml = photoUrl ? `
     <div class="card-media-preview">
       <img src="${photoUrl}" alt="${escapeHtml(lot.title)}" loading="lazy" class="card-media-img">
-      <button class="card-fav-btn ${isFav ? 'active' : ''}" onclick="window.app.toggleFav(event, '${lot.id}')" title="В избранное">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+      <button class="card-fav-btn ${isFav ? 'active' : ''}" aria-pressed="${isFav}" onclick="window.app.toggleFav(event, '${lot.id}')" title="В избранное">
+        <svg class="sl-like__heart" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+          <path class="sl-like__outline" d="M12 20S3 14.5 3 8.5a4.6 4.6 0 0 1 9-1.4 4.6 4.6 0 0 1 9 1.4C21 14.5 12 20 12 20Z"/>
+          <path class="sl-like__fill" d="M12 20S3 14.5 3 8.5a4.6 4.6 0 0 1 9-1.4 4.6 4.6 0 0 1 9 1.4C21 14.5 12 20 12 20Z"/>
         </svg>
       </button>
     </div>
@@ -2368,6 +2685,9 @@ async function handleNewSearchSubmit(e) {
   const excludeAccEl = document.getElementById('newExcludeAccessories');
   const excludeAcc = excludeAccEl ? excludeAccEl.checked : true;
 
+  const minPriceEl = document.getElementById('newMinPrice');
+  const minPrice = minPriceEl ? Math.max(0, minPriceEl.valueAsNumber || 0) : 0;
+
   TelegramService.haptic('success');
   closeAllModals();
 
@@ -2377,7 +2697,7 @@ async function handleNewSearchSubmit(e) {
     const newSearch = await ApiService.createSearch({
       query: q,
       city: city,
-      minPrice: 0,
+      minPrice: minPrice,
       filters: { noDefects: true, excludeAccessories: excludeAcc }
     });
 
@@ -2491,7 +2811,10 @@ function setupEventListeners() {
 
   // Refresh button
   DOM.btnRefresh?.addEventListener('click', async () => {
+    if (DOM.btnRefresh.disabled) return;
     TelegramService.haptic('medium');
+    DOM.btnRefresh.disabled = true;
+    DOM.btnRefresh.setAttribute('aria-busy', 'true');
     const svg = DOM.btnRefresh.querySelector('svg');
     if (svg) svg.classList.add('rotating');
     showToast('Синхронизация с сервером...', 'info');
@@ -2500,12 +2823,45 @@ function setupEventListeners() {
         await scanSearch(State.currentSearchId);
       } else {
         await loadData();
-        showToast('Данные синхронизированы', 'success');
+        if (!ApiService.networkFailed) showToast('Данные синхронизированы', 'success');
       }
     } finally {
+      DOM.btnRefresh.disabled = false;
+      DOM.btnRefresh.removeAttribute('aria-busy');
       if (svg) svg.classList.remove('rotating');
     }
   });
+
+  // SL UI Library mounts (MIT © SLtowl): accessories toggle + price slider
+  const accToggleRoot = document.getElementById('excludeAccessoriesToggle');
+  if (accToggleRoot) {
+    try {
+      SLUI.mountToggle(accToggleRoot, {
+        onChange: () => TelegramService.haptic('selection')
+      });
+    } catch (err) {
+      console.warn('[SLUI] toggle mount failed:', err);
+    }
+  }
+
+  const priceSliderRoot = document.querySelector('#newSearchModal .sl-slider');
+  if (priceSliderRoot) {
+    try {
+      let lastSliderHaptic = 0;
+      SLUI.mountSlider(priceSliderRoot, {
+        formatValue: v => (v <= 0 ? 'без порога' : v.toLocaleString('ru-RU') + ' ₽'),
+        onChange: () => {
+          const now = Date.now();
+          if (now - lastSliderHaptic > 200) {
+            lastSliderHaptic = now;
+            TelegramService.haptic('selection');
+          }
+        }
+      });
+    } catch (err) {
+      console.warn('[SLUI] slider mount failed:', err);
+    }
+  }
 
   // Modal Backdrop Close
   DOM.modalOverlay?.addEventListener('click', closeAllModals);

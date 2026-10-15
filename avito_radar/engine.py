@@ -78,7 +78,8 @@ def scan_search(
     state_data = load_scan_state(search)
 
     start_page = 1 if (start_from_scratch or state_data.get("complete")) else int(state_data.get("next_page", 1))
-    limit_pages = max_pages or cfg.max_scan_pages
+    # Учитываем и явный limit вызова, и настройку max_scan_pages
+    limit_pages = min(max_pages, cfg.max_scan_pages) if max_pages else cfg.max_scan_pages
     current_page = start_page
     total_new_items = 0
 
@@ -117,7 +118,7 @@ def scan_search(
             save_listings(search, listings_data)
             save_seen(search, seen_data)
 
-            is_done = page.is_last or current_page >= cfg.max_scan_pages
+            is_done = page.is_last or (current_page - start_page + 1) >= limit_pages
             save_scan_state(search, {"complete": is_done, "next_page": 1 if is_done else current_page + 1})
 
             if progress_callback:
@@ -138,6 +139,8 @@ def scan_search(
     except KeyboardInterrupt:
         if progress_callback:
             progress_callback({"event": "INTERRUPTED", "search": search.name, "saved_page": current_page})
+        # Прерывание не глотаем: честно пробрасываем наверх
+        raise
 
     # Parse and enrich all collected listings
     parsed_items: list[ParsedItem] = []

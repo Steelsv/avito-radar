@@ -34,7 +34,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 
   <!-- Production CSS Stylesheet -->
-  <link rel="stylesheet" href="css/styles.css?v=loft12">
+  <link rel="stylesheet" href="css/styles.css?v=loft13">
 </head>
 <body>
 
@@ -369,14 +369,37 @@
         </div>
 
 
-        <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--surface-card); border: 1px solid var(--border-subtle); border-radius: 12px; margin-top: 10px;">
-          <div>
-            <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-              <span>🛡️ Исключать аксессуары и запчасти</span>
+        <!-- Price floor: SL UI Library "Price range" slider (matte-range-slider), MIT © SLtowl -->
+        <div class="form-group" style="margin-top: 12px;">
+          <fieldset class="sl-slider" data-slider="range" style="--low: 0%; --high: 0%;">
+            <legend class="slider-sr">Минимальная цена лота</legend>
+            <div class="slider-header">
+              <span>Минимальная цена</span>
+              <output class="font-mono" for="newMinPrice" data-output>без порога</output>
             </div>
-            <div class="caption" style="font-size: 11px; margin-top: 2px;">Скрывать покрышки, сидушки, чехлы и расходники, чтобы не ломать медиану цен</div>
-          </div>
-          <input type="checkbox" id="newExcludeAccessories" checked style="width: 20px; height: 20px; accent-color: var(--accent-brass); cursor: pointer;">
+            <div class="slider-track">
+              <span class="slider-rail" aria-hidden="true"><span class="slider-fill"></span></span>
+              <input class="slider-input" id="newMinPrice" name="newMinPrice" type="range" min="0" max="300000" step="1000" value="0" aria-label="Минимальная цена лота">
+            </div>
+            <div class="slider-ends"><span>0 ₽</span><span>300 000 ₽</span></div>
+          </fieldset>
+        </div>
+
+        <!-- Accessories switch: SL UI Library "Notifications" toggle (matte-glide-toggle), MIT © SLtowl -->
+        <div class="form-group sl-toggle" id="excludeAccessoriesToggle" data-checked="true" style="margin-top: 10px;">
+          <label class="sl-toggle__label" for="newExcludeAccessories">
+            <span class="sl-toggle__copy">
+              <span class="sl-toggle__title">🛡️ Исключать аксессуары и запчасти</span>
+              <span class="sl-toggle__status" data-status>Включено</span>
+            </span>
+            <span class="sl-toggle__hint">Скрывать покрышки, сидушки, чехлы и расходники, чтобы не ломать медиану цен</span>
+          </label>
+          <span class="sl-toggle__switch">
+            <input class="sl-toggle__input" id="newExcludeAccessories" type="checkbox" checked data-on="Включено" data-off="Выключено">
+            <span class="sl-toggle__track" aria-hidden="true">
+              <span class="sl-toggle__thumb"><span class="sl-toggle__dot"></span></span>
+            </span>
+          </span>
         </div>
 
         <button type="submit" class="btn-cta" style="height: 48px; font-size: 14px; margin-top: 18px;">
@@ -435,7 +458,7 @@
   </div>
 
   <!-- Application Controller -->
-  <script src="js/suggestions.js?v=2"></script>
-  <script src="js/app.js?v=10"></script>
+  <script src="js/suggestions.js?v=3"></script>
+  <script src="js/app.js?v=11"></script>
 </body>
 </html>

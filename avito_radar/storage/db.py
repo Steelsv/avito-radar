@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
+import threading
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from pathlib import Path
@@ -56,18 +59,43 @@ def ensure_dirs() -> None:
     SEARCHES_DIR.mkdir(parents=True, exist_ok=True)
 
 
+# Сериализация файловых операций JSON между потоками
+_JSON_LOCK = threading.RLock()
+
+# Допустимое имя поиска: защита от path traversal при удалении/создании
+_SEARCH_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def is_valid_search_name(name: str) -> bool:
+    """Проверка, что имя поиска не содержит путевых символов (.., /, \\)."""
+    return bool(name) and bool(_SEARCH_NAME_RE.fullmatch(name))
+
+
 def load_json(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+    with _JSON_LOCK:
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
 
 
 def save_json(path: Path, data: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    """Атомарная запись JSON: временный файл в той же папке + os.replace."""
+    with _JSON_LOCK:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(data, ensure_ascii=False, indent=2)
+        tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        try:
+            tmp_path.write_text(payload, encoding="utf-8")
+            os.replace(tmp_path, path)
+        finally:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
 
 
 DEFAULT_CITIES: dict[str, dict[str, Any]] = {
@@ -178,7 +206,8 @@ def list_searches(user_id: str | int | None = None) -> list[SearchRecord]:
 
 
 def delete_search(name: str, user_id: str | int | None = None) -> bool:
-    import shutil
+    if not is_valid_search_name(name):
+        return False
     rec = load_search(name)
     if rec and user_id is not None:
         uid_str = str(user_id).strip()

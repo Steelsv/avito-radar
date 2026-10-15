@@ -294,10 +294,17 @@ def cmd_telegram_setup() -> None:
         return
 
     console.print(f"\n[cyan]Проверяю токен...[/cyan]")
+    me = None
     try:
-        me = TelegramNotifier(TelegramConfig(token=token, chat_id=0)).api_get_me(token) if hasattr(TelegramNotifier, 'api_get_me') else None
+        me = TelegramNotifier(TelegramConfig(token=token, chat_id=0)).get_me()
     except Exception:
-        pass
+        me = None
+    if me:
+        bot_username = me.get("username") or str(me.get("id", "?"))
+        console.print(f"[green]✓ Токен верный: бот @{bot_username}[/green]")
+    else:
+        console.print("[bold red]✗ Токен не прошёл проверку (getMe). Проверьте токен в @BotFather.[/bold red]")
+        return
 
     console.print(f"[yellow]Теперь откройте вашего бота в Telegram, отправьте ему сообщение [bold]/start[/bold] и нажмите Enter.[/yellow]")
     input("Нажмите Enter после отправки /start...")
