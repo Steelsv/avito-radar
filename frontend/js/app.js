@@ -1984,7 +1984,10 @@ function createLotCard(lot) {
 
       <div class="card-price-row">
         <div class="card-price">${priceFormatted}</div>
-        ${marketFormatted ? `<div class="card-market font-mono">${marketFormatted} <span style="color: ${lot.discount <= -12 ? 'var(--success)' : 'inherit'};">(${diffSign}${lot.discount}%)</span></div>` : ''}
+        ${marketFormatted ? `
+          <div class="card-market font-mono" title="Оценка рыночной цены лота">
+            <span class="card-market-label">рынок:</span> <span class="card-market-price">${marketFormatted}</span>${lot.discount ? ` <span class="card-market-diff ${isDeal ? 'deal' : (lot.discount > 0 ? 'over' : '')}">(${diffSign}${lot.discount}%)</span>` : ''}
+          </div>` : ''}
       </div>
 
       <div class="card-meta">

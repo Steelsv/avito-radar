@@ -102,6 +102,16 @@
     'нива': 'lada niva',
     'ларгус': 'lada largus',
     'приора': 'lada priora',
+    'дэу': 'daewoo',
+    'дэо': 'daewoo',
+    'деу': 'daewoo',
+    'деву': 'daewoo',
+    'матиз': 'daewoo matiz',
+    'матизик': 'daewoo matiz',
+    'нексия': 'daewoo nexia',
+    'некси': 'daewoo nexia',
+    'джентра': 'daewoo gentra',
+    'ланос': 'chevrolet lanos',
     'фольксваген': 'volkswagen',
     'фольц': 'volkswagen',
     'ваг': 'volkswagen',
@@ -693,6 +703,71 @@
       meta: 'Спортивная спецверсия Monte Carlo • Черные зеркала, спойлер, спорт-руль',
       minPrice: 1100000,
       keywords: ['шкода', 'skoda', 'рапид', 'rapid', 'monte carlo', 'монте карло', '1.4 tsi']
+    },
+
+    // --- АВТОМОБИЛИ: DAEWOO MATIZ & БЮДЖЕТНЫЕ МОДЕЛИ ---
+    {
+      title: 'Daewoo Matiz 0.8 МКПП (механика)',
+      query: 'Daewoo Matiz 0.8 МКПП',
+      category: 'auto',
+      badge: '🚗 Авто • Matiz 0.8',
+      meta: '0.8 л (52 л.с.) МКПП • Экономичный расход 5.5л/100км, надежная механика, дешевое обслуживание',
+      minPrice: 80000,
+      keywords: ['дэу', 'daewoo', 'матиз', 'matiz', '0.8', 'мкпп', 'механика', 'хэтчбек']
+    },
+    {
+      title: 'Daewoo Matiz 0.8 АКПП (автомат)',
+      query: 'Daewoo Matiz автомат АКПП',
+      category: 'auto',
+      badge: '🚗 Авто • Matiz АКПП',
+      meta: 'Редкая комфортная версия с надежным японским 4-ступенчатым автоматом Jatco',
+      minPrice: 140000,
+      keywords: ['дэу', 'daewoo', 'матиз', 'matiz', '0.8', 'акпп', 'автомат', 'jatco']
+    },
+    {
+      title: 'Daewoo Matiz 1.0 Best (4 цилиндра)',
+      query: 'Daewoo Matiz 1.0 Best',
+      category: 'auto',
+      badge: '🚗 Авто • Matiz Best 1.0',
+      meta: '1.0 л (64 л.с.) 4 цилиндра • Топовая резвая версия Best, ГУР, кондиционер, 4 электростеклоподъемника',
+      minPrice: 130000,
+      keywords: ['дэу', 'daewoo', 'матиз', 'matiz', '1.0', 'best', 'бест', '4 цилиндра', 'гур']
+    },
+    {
+      title: 'Daewoo Matiz с кондиционером и ГУР',
+      query: 'Daewoo Matiz с кондиционером',
+      category: 'auto',
+      badge: '🚗 Авто • Matiz с кондиционером',
+      meta: 'Комплектация MX / Best • Кондиционер, гидроусилитель руля (ГУР), центральный замок',
+      minPrice: 110000,
+      keywords: ['дэу', 'daewoo', 'матиз', 'matiz', 'кондиционер', 'гур', 'mx', 'best']
+    },
+    {
+      title: 'Daewoo Matiz Рестайлинг (2008–2015)',
+      query: 'Daewoo Matiz Рестайлинг',
+      category: 'auto',
+      badge: '🚗 Авто • Matiz Рестайлинг',
+      meta: 'Поздние годы выпуска кузов M150 • Обновленная оптика и салон, евро-3/4, честный пробег',
+      minPrice: 120000,
+      keywords: ['дэу', 'daewoo', 'матиз', 'matiz', 'рестайлинг', 'm150', '2008', '2010', '2012', '2014']
+    },
+    {
+      title: 'Daewoo Matiz до 150 000 ₽ на полном ходу',
+      query: 'Daewoo Matiz до 150000',
+      category: 'auto',
+      badge: '🚗 Авто • Matiz бюджет',
+      meta: 'Бюджетный рабочий автомобиль на каждый день • Сел и поехал, без критичной коррозии',
+      minPrice: 80000,
+      keywords: ['дэу', 'daewoo', 'матиз', 'matiz', 'до 150000', 'на ходу', 'бюджет']
+    },
+    {
+      title: 'Daewoo Nexia 1.6 16v (109 л.с.)',
+      query: 'Daewoo Nexia 1.6',
+      category: 'auto',
+      badge: '🚗 Авто • Nexia 1.6 16v',
+      meta: 'Мотор Lacetti 1.6 (109 л.с.) • Кондиционер, ГУР, вместительный багажник',
+      minPrice: 110000,
+      keywords: ['дэу', 'daewoo', 'нексия', 'nexia', '1.6', '16v', '1.5', 'седан']
     },
 
     // --- АВТОМОБИЛИ: GEELY, HAVAL, CHERY, TANK, ZEEKR ---
@@ -1475,6 +1550,19 @@
         if (metaNorm.includes(qNorm)) {
           bestScore = Math.max(bestScore, 30);
         }
+
+        // Multi-word token matching (e.g. "daewoo matiz" or "matiz 0.8" or "матиз автомат")
+        const tokens = qNorm.split(/\s+/).filter(t => t.length >= 2);
+        if (tokens.length > 1) {
+          const matchCount = tokens.filter(t =>
+            titleNorm.includes(t) || queryNorm.includes(t) || metaNorm.includes(t) || kwNorms.some(k => k.includes(t))
+          ).length;
+          if (matchCount === tokens.length) {
+            bestScore = Math.max(bestScore, 80);
+          } else if (matchCount > 1) {
+            bestScore = Math.max(bestScore, 50 + matchCount * 10);
+          }
+        }
       }
 
       if (bestScore > 0) {
@@ -1497,11 +1585,30 @@
       const isGpu = /rtx|ртх|rx|gtx|видюх|видеокарт/i.test(lowerTrimmed);
       const isCpu = /ryzen|райзен|core|intel|интел|проц/i.test(lowerTrimmed);
       const isApple = /айфон|iphone|apple|эппл|ipad|айпад|macbook|макбук/i.test(lowerTrimmed);
-      const isAuto = /бмв|bmw|мерс|mercedes|лада|lada|веста|vesta|тойота|toyota|камри|camry|ауди|audi|киа|kia|хендай|hyundai|фолькс|vw|колес|диск|резин|шин/i.test(lowerTrimmed);
-      const isTech = isDdr || isGpu || isCpu || isApple || /samsung|самсунг|ps5|пс5|xbox|steam|ssd|ссд|монитор/i.test(lowerTrimmed);
+      const isMatiz = /матиз|matiz/i.test(lowerTrimmed);
+      const isAuto = isMatiz || /бмв|bmw|мерс|mercedes|лада|lada|веста|vesta|тойота|toyota|камри|camry|ауди|audi|киа|kia|хендай|hyundai|фолькс|vw|volkswagen|дэу|daewoo|некси|nexia|ланос|lanos|шевроле|chevrolet|ваз|vaz|приор|priora|грант|granta|калин|kalina|нива|niva|солярис|solaris|рио|rio|форд|ford|фокус|focus|рено|renault|логан|logan|шкода|skoda|октави|octavia|рапид|rapid|мазда|mazda|митсубис|mitsubishi|хонда|honda|ниссан|nissan|пежо|peugeot|ситроен|citroen|опель|opel|джили|geely|хавал|haval|чери|chery|танк|tank|зикр|zeekr|лисян|lixiang|седан|хэтчбек|универсал|кроссовер|внедорожник|колес|диск|резин|шин/i.test(lowerTrimmed);
+      const isTech = isDdr || isGpu || isCpu || isApple || /samsung|самсунг|ps5|пс5|xbox|steam|ssd|ссд|монитор|гравел|велосипед/i.test(lowerTrimmed);
 
       let continuations = [];
-      if (isDdr) {
+      if (isMatiz) {
+        continuations = [
+          { suffix: '0.8 МКПП', meta: '0.8 л (52 л.с.) МКПП • Экономичный расход, надежная механика', minPrice: 80000 },
+          { suffix: '0.8 АКПП Автомат', meta: 'Редкая версия с надежным 4-ступенчатым японским автоматом Jatco', minPrice: 140000 },
+          { suffix: '1.0 Best (4 цилиндра)', meta: '1.0 л (64 л.с.) 4-цилиндровый мотор • Топовая резвая версия Best с ГУР', minPrice: 130000 },
+          { suffix: 'с кондиционером и ГУР', meta: 'Комфортная комплектация MX / Best • Кондиционер, ГУР, электростекла', minPrice: 110000 },
+          { suffix: 'Рестайлинг (2008-2015)', meta: 'Поздние годы выпуска M150 • Обновленная оптика и салон, евро-3/4', minPrice: 120000 },
+          { suffix: 'до 150 000 ₽', meta: 'Бюджетный рабочий авто на каждый день на уверенном ходу', minPrice: 80000 }
+        ];
+      } else if (isAuto) {
+        continuations = [
+          { suffix: 'автомат / АКПП', meta: 'Классическая автоматическая трансмиссия, плавный ход в городе', minPrice: 350000 },
+          { suffix: 'механика / МКПП', meta: 'Надежная механическая коробка передач, экономичный расход', minPrice: 150000 },
+          { suffix: 'с кондиционером', meta: 'Рабочий климат/кондиционер, комфорт в любое время года', minPrice: 200000 },
+          { suffix: '1 владелец без ДТП', meta: 'Зеленая Автотека, заводской окрас, оригинальный ПТС', minPrice: 400000 },
+          { suffix: 'в максимальной комплектации', meta: 'Полный пакет опций, мультимедиа, подогревы сидений', minPrice: 600000 },
+          { suffix: 'рестайлинг', meta: 'Обновленная версия кузова, доработанные двигатели и оптика', minPrice: 300000 }
+        ];
+      } else if (isDdr) {
         continuations = [
           { suffix: '32GB 6000MHz', meta: 'Оптимальный комплект памяти CL30/CL36 для игр', minPrice: 7000 },
           { suffix: '64GB (2x32GB)', meta: 'Двухканальный комплект для тяжелых задач и рендера', minPrice: 15000 },
@@ -1529,31 +1636,27 @@
           { suffix: '256GB полный комплект', meta: 'Коробка, провод, аккумулятор 88%+', minPrice: 50000 },
           { suffix: 'новый не активирован', meta: 'Запечатан, официальная гарантия Apple 1 год', minPrice: 65000 }
         ];
-      } else if (isAuto) {
-        continuations = [
-          { suffix: 'в максимальной комплектации', meta: 'Кожаный салон, панорама, максимальный пакет опций', minPrice: 1200000 },
-          { suffix: '1 владелец без ДТП', meta: 'Зеленая автотека, родной заводской окрас', minPrice: 950000 },
-          { suffix: 'с пробегом до 60 000 км', meta: 'Честный подтвержденный пробег, обслуживание у дилера', minPrice: 1100000 },
-          { suffix: 'автомат / вариатор', meta: 'Классическая автоматическая трансмиссия', minPrice: 850000 }
-        ];
       } else {
         continuations = [
-          { suffix: 'новый с доставкой', meta: 'Быстрая отправка через безопасную Авито Доставку', minPrice: 1000 },
-          { suffix: 'в идеальном состоянии', meta: 'Бережная эксплуатация, без следов использования', minPrice: 2000 },
-          { suffix: 'оригинал с чеком', meta: 'Оригинальный товар с подтверждающими документами', minPrice: 1500 },
-          { suffix: 'срочно ниже рынка', meta: 'Выгодное предложение по сниженной цене', minPrice: 1000 }
+          { suffix: 'в отличном состоянии', meta: 'Полностью исправен, бережная эксплуатация, без дефектов', minPrice: 2000 },
+          { suffix: 'в полном комплекте', meta: 'Оригинальная заводская коробка, документы, все аксессуары', minPrice: 3000 },
+          { suffix: 'новый в упаковке', meta: 'Запечатан, заводские пломбы, не был в использовании', minPrice: 4000 },
+          { suffix: 'оригинал с чеком', meta: 'Подлинный товар с чеком из магазина и остатком гарантии', minPrice: 2500 }
         ];
       }
 
       for (const c of continuations) {
+        const lowerSuffix = c.suffix.toLowerCase();
+        if (lowerTrimmed.includes(lowerSuffix)) continue;
+
         const fullTitle = `${rawTrimmed} ${c.suffix}`;
         if (!existingQueries.has(fullTitle.toLowerCase())) {
           scored.push({
             item: {
               title: fullTitle,
               query: fullTitle,
-              category: isTech ? 'tech' : (isAuto ? 'auto' : 'goods'),
-              badge: isDdr ? '⚡ DDR' : (isGpu ? '⚡ GPU' : (isTech ? '⚡ Электроника' : (isAuto ? '🚗 Авто' : '🔍 Каталог'))),
+              category: isAuto ? 'auto' : (isTech ? 'tech' : 'goods'),
+              badge: isMatiz ? '🚗 Matiz' : (isAuto ? '🚗 Авто' : (isDdr ? '⚡ DDR' : (isGpu ? '⚡ GPU' : (isTech ? '⚡ Электроника' : '🔍 Каталог')))),
               meta: c.meta,
               minPrice: c.minPrice || 0,
               keywords: [rawTrimmed.toLowerCase()]

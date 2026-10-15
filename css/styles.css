@@ -467,21 +467,59 @@ h3, .h3 {
   gap: 4px 8px;
   margin-bottom: 8px;
   font-family: var(--font-mono);
+.card-price-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  gap: 8px;
 }
 
 .card-price {
-  font-size: 18px;
+  font-size: 19px;
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
 
 .card-market {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3.5px;
+  white-space: nowrap;
+}
+
+.card-market-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: lowercase;
+  opacity: 0.8;
+  letter-spacing: 0.2px;
+}
+
+.card-market-price {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.card-market-diff {
+  font-weight: 600;
   font-size: 11px;
   color: var(--text-secondary);
-  text-decoration: line-through;
-  font-variant-numeric: tabular-nums;
+}
+
+.card-market-diff.deal {
+  color: var(--success);
+}
+
+.card-market-diff.over {
+  color: var(--text-muted);
 }
 
 .card-meta {
@@ -728,7 +766,7 @@ h3, .h3 {
 .price-market {
   font-size: 12px;
   color: var(--text-secondary);
-  text-decoration: line-through;
+  text-decoration: none;
   font-variant-numeric: tabular-nums;
 }
 

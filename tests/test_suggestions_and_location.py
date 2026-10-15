@@ -25,5 +25,19 @@ def test_telegram_bot_suggestions_include_ddr5():
 def test_popular_products_has_ddr5_and_pc_parts():
     has_ddr5 = any("ddr5" in q.lower() for _, q, *_ in POPULAR_PRODUCTS)
     has_rtx = any("rtx" in q.lower() for _, q, *_ in POPULAR_PRODUCTS)
+    has_matiz = any("matiz" in q.lower() for _, q, *_ in POPULAR_PRODUCTS)
     assert has_ddr5
     assert has_rtx
+    assert has_matiz
+
+
+def test_telegram_bot_suggestions_include_matiz():
+    res = get_query_suggestions("matiz")
+    assert len(res) > 0
+    assert any("matiz" in item["title"].lower() for item in res)
+    assert any("мкпп" in item["title"].lower() or "автомат" in item["title"].lower() for item in res)
+
+    res_ru = get_query_suggestions("матиз")
+    assert len(res_ru) > 0
+    assert any("matiz" in item["title"].lower() or "матиз" in item["title"].lower() for item in res_ru)
+
