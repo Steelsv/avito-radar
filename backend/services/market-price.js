@@ -77,14 +77,255 @@ function calculateCleanMedian(prices) {
   return Math.round(slice[mid]);
 }
 
+const WB_L = '(?<![\\p{L}\\p{N}])';
+const WB_R = '(?![\\p{L}\\p{N}])';
+
+function parseQueryIntent(query) {
+  if (!query || typeof query !== 'string') return null;
+  const q = query.trim().toLowerCase();
+
+  const intent = {
+    raw: query,
+    brand: null,
+    modelNumber: null,
+    subModel: null,
+    storage: null,
+    features: []
+  };
+
+  // 1. Storage detection (64, 128, 256, 512, 1tb / 1тб)
+  const storageRe = new RegExp(`${WB_L}(64|128|256|512)\\s*(?:gb|гб)?${WB_R}|${WB_L}(1|2)\\s*(?:tb|тб)${WB_R}`, 'iu');
+  const storageMatch = q.match(storageRe);
+  if (storageMatch) {
+    intent.storage = storageMatch[1] ? `${storageMatch[1]}gb` : `${storageMatch[2]}tb`;
+  }
+
+  // 2. Feature detection (esim, etc.)
+  const esimRe = new RegExp(`${WB_L}(?:esim|есим|e-sim)${WB_R}`, 'iu');
+  if (esimRe.test(q)) {
+    intent.features.push('esim');
+  }
+
+  // 3. Apple iPhone detection
+  const iphoneRe = new RegExp(`${WB_L}(?:iphone|айфон|айфончик)${WB_R}|${WB_L}1[1-6]\\s*(?:pro|max|plus|mini|про|макс|плюс|мини)?${WB_R}`, 'iu');
+  if (iphoneRe.test(q)) {
+    intent.brand = 'apple_iphone';
+    const genRe = new RegExp(`${WB_L}(1[1-6]|[78]|xr|xs|x|se)${WB_R}`, 'iu');
+    const genMatch = q.match(genRe);
+    if (genMatch) {
+      intent.modelNumber = genMatch[1].toLowerCase();
+    }
+
+    const proMaxRe = new RegExp(`${WB_L}(?:pro\\s*max|про\\s*макс)${WB_R}`, 'iu');
+    const proRe = new RegExp(`${WB_L}(?:pro|про)${WB_R}`, 'iu');
+    const plusRe = new RegExp(`${WB_L}(?:plus|плюс)${WB_R}`, 'iu');
+    const miniRe = new RegExp(`${WB_L}(?:mini|мини)${WB_R}`, 'iu');
+
+    if (proMaxRe.test(q)) {
+      intent.subModel = 'pro max';
+    } else if (proRe.test(q)) {
+      intent.subModel = 'pro';
+    } else if (plusRe.test(q)) {
+      intent.subModel = 'plus';
+    } else if (miniRe.test(q)) {
+      intent.subModel = 'mini';
+    } else {
+      if (intent.storage || intent.features.length > 0) {
+        intent.subModel = 'base';
+      } else {
+        intent.subModel = 'any';
+      }
+    }
+    return intent;
+  }
+
+  // 4. GPU detection (RTX 4070, RX 6700 XT, etc.)
+  const gpuRe = new RegExp(`${WB_L}(rtx|gtx|rx)\\s*(\\d{3,4})\\s*(ti\\s*super|super|ti|xtx|xt)?${WB_R}`, 'iu');
+  const gpuMatch = q.match(gpuRe);
+  if (gpuMatch) {
+    intent.brand = gpuMatch[1].toLowerCase();
+    intent.modelNumber = gpuMatch[2];
+    intent.subModel = (gpuMatch[3] || '').replace(/\s+/g, ' ').trim().toLowerCase() || 'any';
+    return intent;
+  }
+
+  // 5. PlayStation / Console detection
+  const psRe = new RegExp(`${WB_L}(?:playstation|ps|пс)\\s*([345])${WB_R}`, 'iu');
+  const psMatch = q.match(psRe);
+  if (psMatch) {
+    intent.brand = 'playstation';
+    intent.modelNumber = psMatch[1];
+    const psProRe = new RegExp(`${WB_L}(?:pro|про)${WB_R}`, 'iu');
+    const psSlimRe = new RegExp(`${WB_L}(?:slim|слим)${WB_R}`, 'iu');
+    if (psProRe.test(q)) intent.subModel = 'pro';
+    else if (psSlimRe.test(q)) intent.subModel = 'slim';
+    else intent.subModel = 'any';
+    return intent;
+  }
+
+  // 6. Generic brand + model number (e.g., Format 5222, BMW 3, Camry 70)
+  const numRe = new RegExp(`${WB_L}([\\p{L}]{2,})\\s+(\\d{1,4}[\\p{L}]?)${WB_R}`, 'iu');
+  const numMatch = q.match(numRe);
+  if (numMatch) {
+    intent.brand = numMatch[1].toLowerCase();
+    intent.modelNumber = numMatch[2].toLowerCase();
+    return intent;
+  }
+
+  return intent;
+}
+
+function parseItemModel(title, description = '') {
+  const t = (title || '').toLowerCase();
+  const full = `${t} ${description}`.toLowerCase();
+
+  const item = {
+    brand: null,
+    modelNumber: null,
+    subModel: null,
+    storage: null,
+    features: []
+  };
+
+  // Storage
+  const storageRe = new RegExp(`${WB_L}(64|128|256|512)\\s*(?:gb|гб)?${WB_R}|${WB_L}(1|2)\\s*(?:tb|тб)${WB_R}`, 'iu');
+  const storageMatch = t.match(storageRe);
+  if (storageMatch) {
+    item.storage = storageMatch[1] ? `${storageMatch[1]}gb` : `${storageMatch[2]}tb`;
+  }
+
+  // eSIM
+  const esimRe = new RegExp(`${WB_L}(?:esim|есим|e-sim)${WB_R}`, 'iu');
+  if (esimRe.test(full)) {
+    item.features.push('esim');
+  }
+
+  // iPhone
+  const iphoneRe = new RegExp(`${WB_L}(?:iphone|айфон|айфончик)${WB_R}|${WB_L}1[1-6]\\s*(?:pro|max|plus|mini|про|макс|плюс|мини)?${WB_R}`, 'iu');
+  if (iphoneRe.test(t)) {
+    item.brand = 'apple_iphone';
+    const genRe = new RegExp(`${WB_L}(1[1-6]|[78]|xr|xs|x|se)${WB_R}`, 'iu');
+    const genMatch = t.match(genRe);
+    if (genMatch) {
+      item.modelNumber = genMatch[1].toLowerCase();
+    }
+
+    const proMaxRe = new RegExp(`${WB_L}(?:pro\\s*max|про\\s*макс)${WB_R}`, 'iu');
+    const proRe = new RegExp(`${WB_L}(?:pro|про)${WB_R}`, 'iu');
+    const plusRe = new RegExp(`${WB_L}(?:plus|плюс)${WB_R}`, 'iu');
+    const miniRe = new RegExp(`${WB_L}(?:mini|мини)${WB_R}`, 'iu');
+
+    if (proMaxRe.test(t)) {
+      item.subModel = 'pro max';
+    } else if (proRe.test(t)) {
+      item.subModel = 'pro';
+    } else if (plusRe.test(t)) {
+      item.subModel = 'plus';
+    } else if (miniRe.test(t)) {
+      item.subModel = 'mini';
+    } else {
+      item.subModel = 'base';
+    }
+    return item;
+  }
+
+  // GPU
+  const gpuRe = new RegExp(`${WB_L}(rtx|gtx|rx)\\s*(\\d{3,4})\\s*(ti\\s*super|super|ti|xtx|xt)?${WB_R}`, 'iu');
+  const gpuMatch = t.match(gpuRe);
+  if (gpuMatch) {
+    item.brand = gpuMatch[1].toLowerCase();
+    item.modelNumber = gpuMatch[2];
+    item.subModel = (gpuMatch[3] || '').replace(/\s+/g, ' ').trim().toLowerCase() || 'base';
+    return item;
+  }
+
+  // PlayStation
+  const psRe = new RegExp(`${WB_L}(?:playstation|ps|пс)\\s*([345])${WB_R}`, 'iu');
+  const psMatch = t.match(psRe);
+  if (psMatch) {
+    item.brand = 'playstation';
+    item.modelNumber = psMatch[1];
+    const psProRe = new RegExp(`${WB_L}(?:pro|про)${WB_R}`, 'iu');
+    const psSlimRe = new RegExp(`${WB_L}(?:slim|слим)${WB_R}`, 'iu');
+    if (psProRe.test(t)) item.subModel = 'pro';
+    else if (psSlimRe.test(t)) item.subModel = 'slim';
+    else item.subModel = 'base';
+    return item;
+  }
+
+  // Generic brand + model number
+  const numRe = new RegExp(`${WB_L}([\\p{L}]{2,})\\s+(\\d{1,4}[\\p{L}]?)${WB_R}`, 'iu');
+  const numMatch = t.match(numRe);
+  if (numMatch) {
+    item.brand = numMatch[1].toLowerCase();
+    item.modelNumber = numMatch[2].toLowerCase();
+    return item;
+  }
+
+  return item;
+}
+
+function isItemMatchingSearch(itemTitle, itemDesc, query) {
+  if (!query || !query.trim()) return true;
+  const intent = parseQueryIntent(query);
+  if (!intent || !intent.modelNumber) return true;
+
+  const parsedItem = parseItemModel(itemTitle, itemDesc);
+
+  // 1. Generation / Model number check: STRICT
+  if (intent.modelNumber && parsedItem.modelNumber) {
+    if (intent.modelNumber !== parsedItem.modelNumber) {
+      return false; // e.g. query 15 vs item 13 -> REJECT!
+    }
+  } else if (intent.modelNumber && !parsedItem.modelNumber) {
+    const t = (itemTitle || '').toLowerCase();
+    const conflictingGen = t.match(new RegExp(`${WB_L}(1[1-6]|[78]|xr|xs|x)${WB_R}`, 'iu'));
+    if (conflictingGen && conflictingGen[1].toLowerCase() !== intent.modelNumber) {
+      return false;
+    }
+  }
+
+  // 2. Sub-model check
+  if (intent.subModel && intent.subModel !== 'any') {
+    if (intent.subModel === 'base') {
+      if (parsedItem.subModel && parsedItem.subModel !== 'base') {
+        return false;
+      }
+    } else {
+      if (parsedItem.subModel !== intent.subModel) {
+        return false;
+      }
+    }
+  }
+
+  // 3. Storage check
+  if (intent.storage && parsedItem.storage) {
+    if (intent.storage !== parsedItem.storage) {
+      return false;
+    }
+  }
+
+  // 4. Feature check (e.g. esim)
+  if (intent.features && intent.features.length > 0) {
+    for (const feat of intent.features) {
+      if (!parsedItem.features.includes(feat)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 function annotateLotsWithMarket(lots, searchQuery = '') {
   if (!lots || lots.length === 0) return lots;
 
-  // Detect and tag accessories
+  // 1. Tag accessories and check model mismatch
   lots.forEach(lot => {
     if (!Array.isArray(lot.tags)) {
       lot.tags = [];
     }
+
     const accCheck = isAccessoryOrPart(lot.title, lot.description, searchQuery);
     if (accCheck.isAccessory) {
       lot.isAccessory = true;
@@ -94,23 +335,59 @@ function annotateLotsWithMarket(lots, searchQuery = '') {
     } else if (lot.isAccessory === undefined) {
       lot.isAccessory = false;
     }
+
+    // Model mismatch check
+    lot.isMismatchedModel = !isItemMatchingSearch(lot.title, lot.description, searchQuery);
+    if (lot.isMismatchedModel && !lot.tags.some(t => t.includes('Другая модель'))) {
+      lot.tags.push('⚠️ Другая модель');
+    }
   });
 
-  // Filter out accessories, defective or combo listings from baseline median
-  const validPrices = lots
-    .filter(l => !l.isAccessory && !l.isComboListing && !(Array.isArray(l.tags) && l.tags.some(t => t.includes('Дефект') || t.includes('Запчасти') || t.includes('Сборное') || t.includes('Аксессуар'))))
-    .map(l => l.price)
-    .filter(p => p > 0);
+  // 2. Filter valid lots that strictly match query and are not accessories, defective, or combo listings
+  const validLots = lots.filter(l =>
+    !l.isMismatchedModel &&
+    !l.isAccessory &&
+    !l.isComboListing &&
+    !(Array.isArray(l.tags) && l.tags.some(t => t.includes('Дефект') || t.includes('Запчасти') || t.includes('Сборное') || t.includes('Аксессуар') || t.includes('Другая модель'))) &&
+    l.price > 0
+  );
 
-  const median = calculateCleanMedian(validPrices);
+  // Group valid lots by sub-model segment (e.g. "base", "pro", "pro max", "plus")
+  const segmentPrices = new Map();
+  validLots.forEach(lot => {
+    const parsed = parseItemModel(lot.title, lot.description);
+    const segKey = parsed.subModel || 'base';
+    if (!segmentPrices.has(segKey)) segmentPrices.set(segKey, []);
+    segmentPrices.get(segKey).push(lot.price);
+  });
 
+  const segmentMedians = new Map();
+  for (const [key, prices] of segmentPrices.entries()) {
+    segmentMedians.set(key, calculateCleanMedian(prices));
+  }
+
+  // Global clean median across all valid matching items
+  const overallMedian = calculateCleanMedian(validLots.map(l => l.price));
+
+  // 3. Annotate each lot against its sub-model segment median
   lots.forEach(lot => {
-    lot.marketPrice = median;
-    if (median > 0 && lot.price > 0) {
-      const diffPct = Math.round(((lot.price - median) / median) * 1000) / 10;
+    if (lot.isMismatchedModel) {
+      // Mismatched items should NOT get a misleading high market price or deal tags
+      lot.marketPrice = null;
+      lot.discount = 0;
+      return;
+    }
+
+    const parsed = parseItemModel(lot.title, lot.description);
+    const segKey = parsed.subModel || 'base';
+    const targetMedian = segmentMedians.get(segKey) || overallMedian;
+
+    lot.marketPrice = targetMedian;
+    if (targetMedian > 0 && lot.price > 0) {
+      const diffPct = Math.round(((lot.price - targetMedian) / targetMedian) * 1000) / 10;
       lot.discount = diffPct;
 
-      // Add badges/tags only for actual products (never for accessories or combo bait listings)
+      // Add badges/tags only for actual matching products (never for accessories or combo bait listings)
       if (!lot.isComboListing && !lot.isAccessory) {
         if (diffPct <= -20) {
           if (!lot.tags.includes('🔥 Супер-цена')) lot.tags.unshift(`🔥 Выгодно (${diffPct}%)`);
@@ -129,5 +406,8 @@ function annotateLotsWithMarket(lots, searchQuery = '') {
 module.exports = {
   calculateCleanMedian,
   annotateLotsWithMarket,
-  isAccessoryOrPart
+  isAccessoryOrPart,
+  parseQueryIntent,
+  parseItemModel,
+  isItemMatchingSearch
 };

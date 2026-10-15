@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from typing import Any
 
 from avito_radar.parsers.item_parser import ParsedItem
@@ -199,7 +200,211 @@ LAPTOP_RE = re.compile(
 MEMORY_RE = re.compile(r"^\d+\s*(?:ГБ|ТБ|GB|TB)$", re.I)
 
 
+@dataclass
+class QueryIntent:
+    raw: str
+    brand: str | None = None
+    model_number: str | None = None
+    sub_model: str | None = None
+    storage: str | None = None
+    features: list[str] = field(default_factory=list)
+
+
+def parse_query_intent(query: str) -> QueryIntent | None:
+    if not query or not query.strip():
+        return None
+    q = query.strip().lower()
+    intent = QueryIntent(raw=query)
+
+    # 1. Storage detection (64, 128, 256, 512, 1tb / 1тб)
+    storage_match = re.search(r"(?<!\w)(64|128|256|512)\s*(?:gb|гб)?(?!\w)|(?<!\w)(1|2)\s*(?:tb|тб)(?!\w)", q, re.I)
+    if storage_match:
+        intent.storage = f"{storage_match.group(1)}gb" if storage_match.group(1) else f"{storage_match.group(2)}tb"
+
+    # 2. Features (esim, etc.)
+    if re.search(r"(?<!\w)(?:esim|есим|e-sim)(?!\w)", q, re.I):
+        intent.features.append("esim")
+
+    # 3. iPhone
+    is_iphone = bool(re.search(r"(?<!\w)(?:iphone|айфон|айфончик)(?!\w)|(?<!\w)1[1-6]\s*(?:pro|max|plus|mini|про|макс|плюс|мини)?(?!\w)", q, re.I))
+    if is_iphone:
+        intent.brand = "apple_iphone"
+        gen_m = re.search(r"(?<!\w)(1[1-6]|[78]|xr|xs|x|se)(?!\w)", q, re.I)
+        if gen_m:
+            intent.model_number = gen_m.group(1).lower()
+
+        if re.search(r"(?<!\w)(?:pro\s*max|про\s*макс)(?!\w)", q, re.I):
+            intent.sub_model = "pro max"
+        elif re.search(r"(?<!\w)(?:pro|про)(?!\w)", q, re.I):
+            intent.sub_model = "pro"
+        elif re.search(r"(?<!\w)(?:plus|плюс)(?!\w)", q, re.I):
+            intent.sub_model = "plus"
+        elif re.search(r"(?<!\w)(?:mini|мини)(?!\w)", q, re.I):
+            intent.sub_model = "mini"
+        else:
+            if intent.storage or intent.features:
+                intent.sub_model = "base"
+            else:
+                intent.sub_model = "any"
+        return intent
+
+    # 4. GPU detection (RTX 4070, RX 6700 XT, etc.)
+    gpu_m = re.search(r"(?<!\w)(rtx|gtx|rx)\s*(\d{3,4})\s*(ti\s*super|super|ti|xtx|xt)?(?!\w)", q, re.I)
+    if gpu_m:
+        intent.brand = gpu_m.group(1).lower()
+        intent.model_number = gpu_m.group(2)
+        sub = re.sub(r"\s+", " ", gpu_m.group(3) or "").strip().lower()
+        intent.sub_model = sub if sub else "any"
+        return intent
+
+    # 5. Console detection (PS5, PlayStation 5)
+    ps_m = re.search(r"(?<!\w)(?:playstation|ps|пс)\s*([345])(?!\w)", q, re.I)
+    if ps_m:
+        intent.brand = "playstation"
+        intent.model_number = ps_m.group(1)
+        if re.search(r"(?<!\w)(?:pro|про)(?!\w)", q, re.I):
+            intent.sub_model = "pro"
+        elif re.search(r"(?<!\w)(?:slim|слим)(?!\w)", q, re.I):
+            intent.sub_model = "slim"
+        else:
+            intent.sub_model = "any"
+        return intent
+
+    # 6. Generic brand + model number (e.g. Format 5222, BMW 3, Camry 70)
+    gen_m = re.search(r"(?<!\w)([a-zA-Zа-яА-ЯёЁ]{2,})\s+(\d{1,4}[a-zA-Zа-яА-ЯёЁ]?)(?!\w)", q, re.I)
+    if gen_m:
+        intent.brand = gen_m.group(1).lower()
+        intent.model_number = gen_m.group(2).lower()
+        return intent
+
+    return intent
+
+
+def parse_item_model(title: str, description: str = "") -> dict[str, Any]:
+    t = (title or "").lower()
+    full = f"{t} {description}".lower()
+    item: dict[str, Any] = {
+        "brand": None,
+        "model_number": None,
+        "sub_model": None,
+        "storage": None,
+        "features": [],
+    }
+
+    # Storage
+    st_m = re.search(r"(?<!\w)(64|128|256|512)\s*(?:gb|гб)?(?!\w)|(?<!\w)(1|2)\s*(?:tb|тб)(?!\w)", t, re.I)
+    if st_m:
+        item["storage"] = f"{st_m.group(1)}gb" if st_m.group(1) else f"{st_m.group(2)}tb"
+
+    # eSIM
+    if re.search(r"(?<!\w)(?:esim|есим|e-sim)(?!\w)", full, re.I):
+        item["features"].append("esim")
+
+    # iPhone
+    if re.search(r"(?<!\w)(?:iphone|айфон|айфончик)(?!\w)|(?<!\w)1[1-6]\s*(?:pro|max|plus|mini|про|макс|плюс|мини)?(?!\w)", t, re.I):
+        item["brand"] = "apple_iphone"
+        gen_m = re.search(r"(?<!\w)(1[1-6]|[78]|xr|xs|x|se)(?!\w)", t, re.I)
+        if gen_m:
+            item["model_number"] = gen_m.group(1).lower()
+        if re.search(r"(?<!\w)(?:pro\s*max|про\s*макс)(?!\w)", t, re.I):
+            item["sub_model"] = "pro max"
+        elif re.search(r"(?<!\w)(?:pro|про)(?!\w)", t, re.I):
+            item["sub_model"] = "pro"
+        elif re.search(r"(?<!\w)(?:plus|плюс)(?!\w)", t, re.I):
+            item["sub_model"] = "plus"
+        elif re.search(r"(?<!\w)(?:mini|мини)(?!\w)", t, re.I):
+            item["sub_model"] = "mini"
+        else:
+            item["sub_model"] = "base"
+        return item
+
+    # GPU
+    gpu_m = re.search(r"(?<!\w)(rtx|gtx|rx)\s*(\d{3,4})\s*(ti\s*super|super|ti|xtx|xt)?(?!\w)", t, re.I)
+    if gpu_m:
+        item["brand"] = gpu_m.group(1).lower()
+        item["model_number"] = gpu_m.group(2)
+        sub = re.sub(r"\s+", " ", gpu_m.group(3) or "").strip().lower()
+        item["sub_model"] = sub if sub else "base"
+        return item
+
+    # PlayStation
+    ps_m = re.search(r"(?<!\w)(?:playstation|ps|пс)\s*([345])(?!\w)", t, re.I)
+    if ps_m:
+        item["brand"] = "playstation"
+        item["model_number"] = ps_m.group(1)
+        if re.search(r"(?<!\w)(?:pro|про)(?!\w)", t, re.I):
+            item["sub_model"] = "pro"
+        elif re.search(r"(?<!\w)(?:slim|слим)(?!\w)", t, re.I):
+            item["sub_model"] = "slim"
+        else:
+            item["sub_model"] = "base"
+        return item
+
+    # Generic brand + model number
+    gen_m = re.search(r"(?<!\w)([a-zA-Zа-яА-ЯёЁ]{2,})\s+(\d{1,4}[a-zA-Zа-яА-ЯёЁ]?)(?!\w)", t, re.I)
+    if gen_m:
+        item["brand"] = gen_m.group(1).lower()
+        item["model_number"] = gen_m.group(2).lower()
+        return item
+
+    return item
+
+
+def is_item_matching_search(title: str, description: str, query: str) -> bool:
+    if not query or not query.strip():
+        return True
+    intent = parse_query_intent(query)
+    if not intent or not intent.model_number:
+        return True
+
+    item = parse_item_model(title, description)
+
+    # 1. Generation / Model number check: STRICT
+    if intent.model_number and item.get("model_number"):
+        if intent.model_number != item["model_number"]:
+            return False
+    elif intent.model_number and not item.get("model_number"):
+        t = (title or "").lower()
+        conflicting = re.search(r"(?<!\w)(1[1-6]|[78]|xr|xs|x)(?!\w)", t, re.I)
+        if conflicting and conflicting.group(1).lower() != intent.model_number:
+            return False
+
+    # 2. Sub-model check
+    if intent.sub_model and intent.sub_model != "any":
+        if intent.sub_model == "base":
+            if item.get("sub_model") and item["sub_model"] != "base":
+                return False
+        else:
+            if item.get("sub_model") != intent.sub_model:
+                return False
+
+    # 3. Storage check
+    if intent.storage and item.get("storage"):
+        if intent.storage != item["storage"]:
+            return False
+
+    # 4. Feature check (e.g. esim)
+    if intent.features:
+        for feat in intent.features:
+            if feat not in item.get("features", []):
+                return False
+
+    return True
+
+
 def extract_goods_group(title: str) -> str:
+    parsed = parse_item_model(title, "")
+    if parsed.get("brand") == "apple_iphone" and parsed.get("model_number"):
+        sub = f" {parsed['sub_model']}" if parsed.get("sub_model") and parsed["sub_model"] != "base" else ""
+        mem = f", {parsed['storage']}" if parsed.get("storage") else ""
+        return f"iPhone {parsed['model_number']}{sub}{mem}".strip()
+    elif parsed.get("brand") in ("rtx", "gtx", "rx") and parsed.get("model_number"):
+        sub = f" {parsed['sub_model']}" if parsed.get("sub_model") and parsed["sub_model"] != "base" else ""
+        return f"{parsed['brand'].upper()} {parsed['model_number']}{sub}".strip()
+    elif parsed.get("brand") == "playstation" and parsed.get("model_number"):
+        sub = f" {parsed['sub_model']}" if parsed.get("sub_model") and parsed["sub_model"] != "base" else ""
+        return f"PlayStation {parsed['model_number']}{sub}".strip()
+
     parts = [p.strip() for p in title.split(",") if p.strip()]
     if not parts:
         return title
@@ -272,6 +477,12 @@ def classify_item(item: ParsedItem, category_type: str = "goods", search_query: 
             item.is_accessory = True
             item.tags.append(f"🛡️ {acc_label}")
 
+        # Check model/generation mismatch against search query intent
+        if search_query:
+            if not is_item_matching_search(item.title, item.description, search_query):
+                item.is_mismatched_model = True
+                item.tags.append("⚠️ Другая модель / поколение")
+
         if DEFECT_RE.search(full_text):
             item.tags.append("⚠️ Дефект / На запчасти")
 
@@ -321,6 +532,8 @@ def classify_item(item: ParsedItem, category_type: str = "goods", search_query: 
 
 def is_likely_fake_or_junk(item: ParsedItem, min_price: int | None = None) -> bool:
     """Check if item is junk, parts, accessories, or clickbait price."""
+    if getattr(item, "is_mismatched_model", False):
+        return True
     if getattr(item, "is_accessory", False):
         return True
     if min_price and item.price and item.price < min_price:

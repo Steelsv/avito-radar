@@ -359,3 +359,194 @@ def test_iphone_and_car_accessories_detection():
     assert any("Автоаксессуар" in t for t in mats.tags)
 
 
+def test_query_intent_parsing():
+    """Verify that query intent parsing extracts brand, model, storage, and features."""
+    from avito_radar.analysis.classifier import parse_query_intent
+
+    # 1. iPhone generic
+    i1 = parse_query_intent("iPhone 15")
+    assert i1.brand == "apple_iphone"
+    assert i1.model_number == "15"
+    assert i1.sub_model == "any"
+    assert i1.storage is None
+
+    # 2. Russian syntax "15 айфон"
+    i2 = parse_query_intent("15 айфон")
+    assert i2.brand == "apple_iphone"
+    assert i2.model_number == "15"
+    assert i2.sub_model == "any"
+
+    # 3. Exact specification "iphone 15 128 esim"
+    i3 = parse_query_intent("iphone 15 128 esim")
+    assert i3.brand == "apple_iphone"
+    assert i3.model_number == "15"
+    assert i3.sub_model == "base"
+    assert i3.storage == "128gb"
+    assert "esim" in i3.features
+
+    # 4. Pro Max with storage
+    i4 = parse_query_intent("айфон 15 про макс 256")
+    assert i4.brand == "apple_iphone"
+    assert i4.model_number == "15"
+    assert i4.sub_model == "pro max"
+    assert i4.storage == "256gb"
+
+    # 5. GPU RTX 4070
+    g1 = parse_query_intent("RTX 4070")
+    assert g1.brand == "rtx"
+    assert g1.model_number == "4070"
+
+    # 6. PlayStation 5
+    ps = parse_query_intent("PS5")
+    assert ps.brand == "playstation"
+    assert ps.model_number == "5"
+
+
+def test_iphone_13_filtered_from_iphone_15_search():
+    """User case: iPhone 13 Pro must be flagged as mismatched and NOT distort iPhone 15 market prices."""
+    from avito_radar.analysis.classifier import classify_item, is_likely_fake_or_junk
+    from avito_radar.analysis.market import annotate_market_prices
+
+    wrong_item = ParsedItem(
+        id=501,
+        title="iPhone 13 Pro, 128 ГБ, SIM + eSIM",
+        price=26990,
+        price_formatted="26 990 ₽",
+        url="https://www.avito.ru/501",
+        address="Челябинск",
+        metro="",
+        city="chelyabinsk",
+        published_text="сегодня",
+        sort_timestamp=None,
+        seller_name="Магазин",
+        seller_type="магазин",
+        seller_rating=4.8,
+        closed_listings=80,
+        badges=(),
+        images=[],
+        description="Отличный телефон iPhone 13 Pro",
+        phone_available=True,
+    )
+
+    right_item1 = ParsedItem(
+        id=502,
+        title="iPhone 15, 128 ГБ, SIM + eSIM",
+        price=54000,
+        price_formatted="54 000 ₽",
+        url="https://www.avito.ru/502",
+        address="Челябинск",
+        metro="",
+        city="chelyabinsk",
+        published_text="сегодня",
+        sort_timestamp=None,
+        seller_name="Иван",
+        seller_type="частное лицо",
+        seller_rating=5.0,
+        closed_listings=3,
+        badges=(),
+        images=[],
+        description="Новый iPhone 15 запечатан",
+        phone_available=True,
+    )
+
+    right_item2 = ParsedItem(
+        id=503,
+        title="iPhone 15, 128 ГБ, SIM + eSIM",
+        price=58000,
+        price_formatted="58 000 ₽",
+        url="https://www.avito.ru/503",
+        address="Челябинск",
+        metro="",
+        city="chelyabinsk",
+        published_text="сегодня",
+        sort_timestamp=None,
+        seller_name="Алексей",
+        seller_type="частное лицо",
+        seller_rating=5.0,
+        closed_listings=1,
+        badges=(),
+        images=[],
+        description="iPhone 15 в идеале",
+        phone_available=True,
+    )
+
+    right_item3 = ParsedItem(
+        id=504,
+        title="iPhone 15, 128 ГБ, SIM + eSIM",
+        price=56000,
+        price_formatted="56 000 ₽",
+        url="https://www.avito.ru/504",
+        address="Челябинск",
+        metro="",
+        city="chelyabinsk",
+        published_text="сегодня",
+        sort_timestamp=None,
+        seller_name="Дмитрий",
+        seller_type="частное лицо",
+        seller_rating=5.0,
+        closed_listings=2,
+        badges=(),
+        images=[],
+        description="iPhone 15 128gb",
+        phone_available=True,
+    )
+
+    # Classify all items for query "iPhone 15 eSIM"
+    classify_item(wrong_item, category_type="goods", search_query="iPhone 15 eSIM")
+    classify_item(right_item1, category_type="goods", search_query="iPhone 15 eSIM")
+    classify_item(right_item2, category_type="goods", search_query="iPhone 15 eSIM")
+    classify_item(right_item3, category_type="goods", search_query="iPhone 15 eSIM")
+
+    # The iPhone 13 Pro MUST be flagged as mismatched model
+    assert wrong_item.is_mismatched_model is True
+    assert any("Другая модель" in t for t in wrong_item.tags)
+    assert is_likely_fake_or_junk(wrong_item) is True
+
+    # The iPhone 15 items MUST NOT be flagged as mismatched
+    assert right_item1.is_mismatched_model is False
+    assert right_item2.is_mismatched_model is False
+    assert right_item3.is_mismatched_model is False
+
+    # Annotate prices
+    items = [wrong_item, right_item1, right_item2, right_item3]
+    annotate_market_prices(items)
+
+    # iPhone 15 market price must be ~56 000 ₽ (clean median of 54k, 56k, 58k)
+    assert right_item1.market_price == 56000
+
+    # Wrong iPhone 13 must NOT receive iPhone 15's market price or deal tags
+    assert wrong_item.market_price is None
+    assert wrong_item.market_diff_percent is None
+    assert not any("Супер-цена" in t for t in wrong_item.tags)
+    assert not any("Выгодно" in t for t in wrong_item.tags)
+
+
+def test_iphone_15_128_esim_vs_broad_iphone_15():
+    """Verify difference between exact query (128 esim) and broad query (all 15 models)."""
+    from avito_radar.analysis.classifier import is_item_matching_search
+
+    exact_query = "iphone 15 128 esim"
+    broad_query = "iphone 15"
+
+    item_base_128_esim = ("iPhone 15, 128 ГБ, SIM + eSIM", "Новый телефон")
+    item_base_256_esim = ("iPhone 15, 256 ГБ, SIM + eSIM", "Новый телефон")
+    item_pro_128_esim = ("iPhone 15 Pro, 128 ГБ, SIM + eSIM", "Новый телефон")
+    item_base_128_no_esim = ("iPhone 15, 128 ГБ", "Только физическая сим-карта")
+    item_old_13_pro = ("iPhone 13 Pro, 128 ГБ, SIM + eSIM", "Отличный телефон")
+
+    # 1. Exact query: "iphone 15 128 esim"
+    assert is_item_matching_search(item_base_128_esim[0], item_base_128_esim[1], exact_query) is True
+    assert is_item_matching_search(item_base_256_esim[0], item_base_256_esim[1], exact_query) is False  # capacity mismatch
+    assert is_item_matching_search(item_pro_128_esim[0], item_pro_128_esim[1], exact_query) is False   # pro mismatch
+    assert is_item_matching_search(item_base_128_no_esim[0], item_base_128_no_esim[1], exact_query) is False  # esim mismatch
+    assert is_item_matching_search(item_old_13_pro[0], item_old_13_pro[1], exact_query) is False      # generation mismatch
+
+    # 2. Broad query: "iphone 15" (accepts all 15 models & configurations)
+    assert is_item_matching_search(item_base_128_esim[0], item_base_128_esim[1], broad_query) is True
+    assert is_item_matching_search(item_base_256_esim[0], item_base_256_esim[1], broad_query) is True
+    assert is_item_matching_search(item_pro_128_esim[0], item_pro_128_esim[1], broad_query) is True
+    assert is_item_matching_search(item_base_128_no_esim[0], item_base_128_no_esim[1], broad_query) is True
+    assert is_item_matching_search(item_old_13_pro[0], item_old_13_pro[1], broad_query) is False  # generation mismatch
+
+
+

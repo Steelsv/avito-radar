@@ -233,6 +233,10 @@ def watch_searches(
                             q_str = s.title or s.params.get("q", "")
                             classify_item(parsed, category_type=s.category_type, search_query=q_str)
 
+                            # Filter mismatched models (e.g. iPhone 13 when searching iPhone 15)
+                            if getattr(parsed, "is_mismatched_model", False):
+                                continue
+
                             # Filter accessories if configured
                             if getattr(s, "exclude_accessories", True) and getattr(parsed, "is_accessory", False):
                                 continue

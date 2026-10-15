@@ -888,6 +888,10 @@ class AvitoTelegramBot:
                             q_str = s.title or s.params.get("q", "")
                             classify_item(parsed, category_type=s.category_type, search_query=q_str)
 
+                            # Filter mismatched models
+                            if getattr(parsed, "is_mismatched_model", False):
+                                continue
+
                             # Filter private only
                             if s.private_only and any("Агентство" in t or "Магазин" in t for t in parsed.tags):
                                 continue
@@ -999,6 +1003,7 @@ def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
         items = [parse_catalog_item(r) for r in raws.values()]
         for it in items:
             classify_item(it, category_type=s.category_type, search_query=s.title)
+        items = [it for it in items if not getattr(it, "is_mismatched_model", False)]
         annotate_market_prices(items)
 
         bundle[s.name] = {
@@ -1019,6 +1024,7 @@ def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
                     "real_price_in_desc": it.real_price_in_desc,
                     "is_combo_listing": it.is_combo_listing,
                     "is_accessory": getattr(it, "is_accessory", False),
+                    "is_mismatched_model": getattr(it, "is_mismatched_model", False),
                     "url": it.url,
                     "address": it.address,
                     "metro": it.metro,

@@ -55,6 +55,7 @@ class ParsedItem:
     real_price_in_desc: int | None = None
     is_combo_listing: bool = False
     is_accessory: bool = False
+    is_mismatched_model: bool = False
     tags: list[str] = field(default_factory=list)
 
 

@@ -72,10 +72,10 @@ async function scanSearch(search) {
             console.warn(`[AvitoScraper] Market price annotation notice:`, marketErr.message);
           }
 
-          // Check for top deals to alert (excluding accessories)
+          // Check for top deals to alert (excluding accessories and mismatched models)
           for (const lot of freshLots) {
             try {
-              if (lot.discount <= -15 && !lot.isComboListing && !lot.isAccessory && !lot.isDismissed && !lot.notifiedAt) {
+              if (lot.discount <= -15 && !lot.isComboListing && !lot.isAccessory && !lot.isMismatchedModel && !lot.isDismissed && !lot.notifiedAt) {
                 sendDealAlert(null, lot);
                 lot.notifiedAt = Date.now();
               }

@@ -116,6 +116,7 @@ class LotModel {
       badges: raw.badges || [],
       isComboListing: Boolean(raw.is_combo_listing || raw.isComboListing),
       isAccessory: Boolean(raw.is_accessory || raw.isAccessory || (raw.tags && raw.tags.some(t => t.includes('Аксессуар') || t.includes('Велозапчасть') || t.includes('Автоаксессуар')))),
+      isMismatchedModel: Boolean(raw.is_mismatched_model || raw.isMismatchedModel || (raw.tags && raw.tags.some(t => t.includes('Другая модель')))),
       realPriceInDesc: Number(raw.real_price_in_desc || raw.realPriceInDesc) || null
     };
   }
@@ -137,14 +138,27 @@ class LotModel {
       result = result.filter(l => !l.isDismissed);
     }
 
+    // By default, exclude mismatched models
+    if (!filters.includeMismatched) {
+      result = result.filter(l => !l.isMismatchedModel && !(Array.isArray(l.tags) && l.tags.some(t => t.includes('Другая модель'))));
+    }
+
     // Filter by searchId
     if (filters.searchId && filters.searchId !== 'all') {
       result = result.filter(l => l.searchId === filters.searchId);
+      try {
+        const SearchModel = require('./Search');
+        const curSearch = SearchModel.getById(filters.searchId);
+        if (curSearch && curSearch.query) {
+          const { isItemMatchingSearch } = require('../services/market-price');
+          result = result.filter(l => isItemMatchingSearch(l.title, l.description, curSearch.query));
+        }
+      } catch (_) {}
     }
 
     // Filter: only profit
     if (filters.onlyProfit) {
-      result = result.filter(l => l.discount <= -12 && !l.isComboListing && !l.isAccessory);
+      result = result.filter(l => l.discount <= -12 && !l.isComboListing && !l.isAccessory && !l.isMismatchedModel);
     }
 
     // Filter: private sellers only

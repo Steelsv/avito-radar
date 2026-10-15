@@ -93,8 +93,8 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
             groups.setdefault(key, []).append(real_p)
             continue
 
-        # Exclude junk, parts, defects, accessories, and combo bait listings
-        if getattr(item, "is_accessory", False) or is_likely_fake_or_junk(item):
+        # Exclude junk, parts, defects, accessories, mismatched models, and combo bait listings
+        if getattr(item, "is_accessory", False) or getattr(item, "is_mismatched_model", False) or is_likely_fake_or_junk(item):
             continue
 
         all_prices.append(item.price)
@@ -104,7 +104,7 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
     # Fallback to all valid prices if filter removed everything
     if not all_prices:
         for item in items:
-            if item.price and item.price > 0:
+            if item.price and item.price > 0 and not getattr(item, "is_mismatched_model", False):
                 all_prices.append(item.price)
                 key = group_key_fn(item) if group_key_fn else "all"
                 groups.setdefault(key, []).append(item.price)
@@ -120,6 +120,11 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
         stats_map["_overall"] = overall_stats
 
     for item in items:
+        if getattr(item, "is_mismatched_model", False):
+            item.market_price = None
+            item.market_diff_percent = None
+            continue
+
         key = group_key_fn(item) if group_key_fn else "all"
         stats = stats_map.get(key) or stats_map.get("_overall")
         if stats and item.price:
@@ -127,7 +132,7 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
             diff = (item.price - stats.median_price) / stats.median_price * 100
             item.market_diff_percent = round(diff, 1)
 
-            # Do not tag combo / bait or accessory listings as deals
+            # Do not tag combo / bait, accessory, or mismatched listings as deals
             if not getattr(item, "is_combo_listing", False) and not getattr(item, "is_accessory", False):
                 if diff <= -50:
                     item.tags.append(f"🔥 Супер-цена / Проверить лот ({item.market_diff_percent}%)")
