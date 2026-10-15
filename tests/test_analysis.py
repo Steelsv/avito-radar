@@ -753,5 +753,68 @@ def test_cpu_combo_pool_price_in_description():
     assert -10.0 <= item_combo.market_diff_percent <= 5.0
 
 
+def test_daewoo_matiz_auto_filtering():
+    """Verify that auto parts (doors, bumpers) and crashed/dead cars are excluded from Daewoo Matiz median."""
+    def make_car_lot(pid: int, title: str, price: int, desc: str = ""):
+        return ParsedItem(
+            id=pid,
+            title=title,
+            price=price,
+            price_formatted=f"{price:,} ₽".replace(",", " "),
+            url=f"https://www.avito.ru/{pid}",
+            address="Челябинск",
+            metro="",
+            city="chelyabinsk",
+            published_text="сегодня",
+            sort_timestamp=None,
+            seller_name="Продавец",
+            seller_type="частное лицо",
+            seller_rating=5.0,
+            closed_listings=3,
+            badges=(),
+            images=[],
+            description=desc,
+            phone_available=True,
+        )
+
+    door_lot = make_car_lot(401, "Дверь передняя левая Daewoo Matiz", 3000, "В хорошем состоянии, цвет серебристый.")
+    bumper_lot = make_car_lot(402, "Бампер передний на Daewoo Matiz", 2500, "Новый грунтованный.")
+    crashed_lot = make_car_lot(403, "Daewoo Matiz, 2008 битый после ДТП не на ходу", 35000, "После серьезного ДТП, кузов повело, не на ходу, под разбор.")
+
+    car1 = make_car_lot(404, "Daewoo Matiz 0.8 MT, 2008, 120 000 км", 190000, "Отличный городской авто, двигатель шепчет.")
+    car2 = make_car_lot(405, "Daewoo Matiz 0.8 MT, 2010, 95 000 км", 210000, "Без ДТП, кондиционер, ГУР.")
+    car3 = make_car_lot(406, "Daewoo Matiz 0.8 MT, 2011, 80 000 км", 230000, "Один хозяин, ухоженный автомобиль.")
+
+    q = "daewoo matiz"
+    classify_item(door_lot, category_type="auto", search_query=q)
+    classify_item(bumper_lot, category_type="auto", search_query=q)
+    classify_item(crashed_lot, category_type="auto", search_query=q)
+    classify_item(car1, category_type="auto", search_query=q)
+    classify_item(car2, category_type="auto", search_query=q)
+    classify_item(car3, category_type="auto", search_query=q)
+
+    # 1. Door and Bumper must be identified as accessories / parts
+    assert door_lot.is_accessory is True
+    assert bumper_lot.is_accessory is True
+
+    # 2. Crashed car must be identified as defect / dead
+    assert crashed_lot.is_defect is True
+
+    # 3. Running whole cars must NOT be flagged as accessory or defect
+    assert car1.is_accessory is False
+    assert car1.is_defect is False
+
+    # 4. Annotate market prices
+    items = [door_lot, bumper_lot, crashed_lot, car1, car2, car3]
+    annotate_market_prices(items)
+
+    # 5. Market median must be ~210 000 ₽, NOT depressed by 3 000 ₽ door or 35 000 ₽ crash
+    assert car2.market_price == 210000
+    assert car2.market_diff_percent == 0.0
+    assert car1.market_diff_percent == -9.5  # (190000 - 210000) / 210000 = -9.5%
+    assert crashed_lot.market_diff_percent is None  # no false super deal tag on wrecked car!
+
+
+
 
 
