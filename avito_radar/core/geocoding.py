@@ -9,6 +9,7 @@ from typing import Any
 import requests
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 NOMINATIM_HEADERS = {"User-Agent": "avito-radar/1.0 (steelsv)"}
 NOMINATIM_TIMEOUT = 10
 
@@ -63,6 +64,44 @@ def _build_short_name(first: dict[str, Any]) -> str:
     display = str(first.get("display_name") or "").strip()
     parts = [p.strip() for p in display.split(",") if p.strip()]
     return ", ".join(parts[:3]) if parts else display
+
+
+def reverse_geocode(lat: float, lon: float) -> dict[str, Any] | None:
+    """Resolve coordinates to an address via Nominatim /reverse. Returns None on failure."""
+    try:
+        lat_f = float(lat)
+        lon_f = float(lon)
+    except (TypeError, ValueError):
+        return None
+    if not (-90 <= lat_f <= 90) or not (-180 <= lon_f <= 180):
+        return None
+    params = {
+        "lat": str(lat_f),
+        "lon": str(lon_f),
+        "format": "jsonv2",
+        "accept-language": "ru",
+    }
+    try:
+        resp = requests.get(
+            NOMINATIM_REVERSE_URL, params=params, headers=NOMINATIM_HEADERS, timeout=NOMINATIM_TIMEOUT
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get("error"):
+        return None
+    try:
+        res_lat = float(data["lat"])
+        res_lon = float(data["lon"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return {
+        "display_name": str(data.get("display_name") or "").strip(),
+        "short": _build_short_name(data),
+        "lat": res_lat,
+        "lon": res_lon,
+    }
 
 
 def suggest_addresses(query: str, city: str | None = None, limit: int = 5) -> list[dict[str, Any]]:

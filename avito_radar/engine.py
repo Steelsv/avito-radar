@@ -27,6 +27,7 @@ from avito_radar.storage.db import (
     load_scan_state,
     load_search,
     load_seen,
+    is_lot_too_old,
     save_listings,
     save_locations_cache,
     save_scan_state,
@@ -255,6 +256,9 @@ def watch_searches(
 
                             # Fresh item detected!
                             parsed = parse_catalog_item(raw)
+                            # Guard: old lots that reappear after seen.json loss do not re-alert
+                            if is_lot_too_old(raw):
+                                continue
                             q_str = s.title or s.params.get("q", "")
                             classify_item(parsed, category_type=s.category_type, search_query=q_str)
 

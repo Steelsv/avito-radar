@@ -33,7 +33,7 @@ from avito_radar.analysis.market_db import apply_market_cascade, get_variant_sta
 from avito_radar.analysis.seller_score import score_seller
 from avito_radar.config import AppSettings, load_settings, save_settings
 from avito_radar.core.client import AvitoClient
-from avito_radar.core.geocoding import format_distance, geocode_address, lot_distance_km, suggest_addresses
+from avito_radar.core.geocoding import format_distance, geocode_address, lot_distance_km, reverse_geocode, suggest_addresses
 from avito_radar.engine import create_search_from_url, scan_search
 from avito_radar.exporters.excel import export_to_excel
 from avito_radar.notifications.telegram import (
@@ -92,6 +92,7 @@ from avito_radar.storage.db import (
     load_locations_cache,
     load_search,
     load_seen,
+    is_lot_too_old,
     save_listings,
     save_search,
     save_seen,
@@ -1721,6 +1722,13 @@ class AvitoTelegramBot:
 
                             # New listing!
                             parsed = parse_catalog_item(raw)
+                            # Guard: lots older than ALERT_MAX_AGE_HOURS re-alert only after seen.json loss
+                            if is_lot_too_old(raw):
+                                logger.info(
+                                    "Skip stale lot %s (older than alert age limit, search=%s)",
+                                    item_id, s.name,
+                                )
+                                continue
                             q_str = s.title or s.params.get("q", "")
                             classify_item(parsed, category_type=s.category_type, search_query=q_str)
 
@@ -2426,6 +2434,29 @@ def start_healthcheck_server() -> None:
                     self.send_error_json(500, str(exc))
                 return
 
+            if path == "/api/address/reverse":
+                try:
+                    lat_raw = (query_params.get("lat", [""])[0] or "").strip()
+                    lon_raw = (query_params.get("lon", [""])[0] or "").strip()
+                    try:
+                        lat = float(lat_raw)
+                        lon = float(lon_raw)
+                    except (TypeError, ValueError):
+                        self.send_error_json(400, "lat and lon must be numbers")
+                        return
+                    if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                        self.send_error_json(400, "lat must be in -90..90, lon in -180..180")
+                        return
+                    result = reverse_geocode(lat, lon)
+                    if not result:
+                        self.send_error_json(404, "Не удалось определить адрес")
+                        return
+                    self.send_json(200, result)
+                except Exception as exc:
+                    logger.warning("Error reverse geocoding: %s", exc)
+                    self.send_error_json(500, str(exc))
+                return
+
             if path == "/api/suggest":
                 try:
                     q = query_params.get("q", [""])[0].strip()
@@ -2821,6 +2852,7 @@ def start_healthcheck_server() -> None:
                     self.wfile.write(json.dumps({
                         "ok": True,
                         "success": True,
+                        "status": "created",
                         "name": c_name,
                         "search": {
                             "id": s_rec.name if s_rec else c_name,

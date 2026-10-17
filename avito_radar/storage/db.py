@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import threading
+import time
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from pathlib import Path
@@ -259,11 +260,33 @@ def rotate_listings(listings: dict[str, dict[str, Any]], max_items: int = MAX_LI
 
 
 def cap_seen(seen: dict[str, str], max_ids: int = MAX_SEEN_IDS) -> dict[str, str]:
-    """Keep the newest seen ids so seen.json does not grow forever."""
+    """Keep the newest seen ids (by first-seen timestamp) so seen.json does not grow forever."""
     if len(seen) <= max_ids:
         return seen
-    ordered = sorted(seen.items(), key=lambda kv: str(kv[1] or ""), reverse=True)
+    ordered = sorted(seen.items(), key=lambda kv: str(kv[1] or "0"), reverse=True)
     return {k: v for k, v in ordered[:max_ids]}
+
+
+def alert_max_age_hours() -> float:
+    try:
+        value = float(os.environ.get("ALERT_MAX_AGE_HOURS", "48") or 48)
+    except (TypeError, ValueError):
+        return 48.0
+    return value
+
+
+def is_lot_too_old(raw: dict[str, Any] | None, max_age_hours: float | None = None) -> bool:
+    """True if the lot's sortTimeStamp is older than max_age_hours (guard against seen.json loss)."""
+    if not isinstance(raw, dict):
+        return False
+    stamp = _raw_sort_ts(raw)
+    if stamp <= 0:
+        return False
+    if max_age_hours is None:
+        max_age_hours = alert_max_age_hours()
+    if max_age_hours <= 0:
+        return False
+    return (time.time() * 1000 - stamp) > max_age_hours * 3600 * 1000
 
 
 def load_listings(search: SearchRecord) -> dict[str, dict[str, Any]]:
@@ -285,7 +308,20 @@ def save_listings(search: SearchRecord, listings: dict[str, dict[str, Any]]) -> 
 
 
 def load_seen(search: SearchRecord) -> dict[str, str]:
-    return load_json(search.file_path("seen.json"))
+    """Load seen.json as {id: first_seen_ts}; legacy list format migrates to ts=now."""
+    data = load_json(search.file_path("seen.json"))
+    if isinstance(data, list):
+        now_str = datetime.now().isoformat()
+        return {str(item): now_str for item in data if item is not None}
+    if not isinstance(data, dict):
+        return {}
+    result: dict[str, str] = {}
+    for key, value in data.items():
+        ts = str(value or "").strip()
+        if not ts:
+            ts = datetime.now().isoformat()
+        result[str(key)] = ts
+    return result
 
 
 def save_seen(search: SearchRecord, seen: dict[str, str]) -> None:
