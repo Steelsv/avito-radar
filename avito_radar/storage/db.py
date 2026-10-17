@@ -35,6 +35,7 @@ class SearchRecord:
     min_price: int | None = None
     max_price: int | None = None
     exclude_accessories: bool = True
+    drop_overpriced_pct: int = 50
     created_at: str = ""
     user_id: str = ""
 
@@ -233,6 +234,38 @@ def delete_search(name: str, user_id: str | int | None = None) -> bool:
     return deleted
 
 
+MAX_LISTINGS_PER_SEARCH = 300
+MAX_SEEN_IDS = 2000
+
+
+def _raw_sort_ts(raw: dict[str, Any]) -> float:
+    stamp = raw.get("sortTimeStamp")
+    if isinstance(stamp, (int, float)) and stamp > 0:
+        return float(stamp)
+    return 0.0
+
+
+def rotate_listings(listings: dict[str, dict[str, Any]], max_items: int = MAX_LISTINGS_PER_SEARCH) -> dict[str, dict[str, Any]]:
+    """Keep only the newest listings (by sortTimeStamp, then insertion order)."""
+    if len(listings) <= max_items:
+        return listings
+    ordered = sorted(
+        listings.items(),
+        key=lambda kv: (_raw_sort_ts(kv[1]) if isinstance(kv[1], dict) else 0.0),
+        reverse=True,
+    )
+    # Same-timestamp group keeps insertion order stable: re-sort with index tiebreak
+    return {k: v for k, v in ordered[:max_items]}
+
+
+def cap_seen(seen: dict[str, str], max_ids: int = MAX_SEEN_IDS) -> dict[str, str]:
+    """Keep the newest seen ids so seen.json does not grow forever."""
+    if len(seen) <= max_ids:
+        return seen
+    ordered = sorted(seen.items(), key=lambda kv: str(kv[1] or ""), reverse=True)
+    return {k: v for k, v in ordered[:max_ids]}
+
+
 def load_listings(search: SearchRecord) -> dict[str, dict[str, Any]]:
     return load_json(search.file_path("listings.json"))
 
@@ -247,6 +280,7 @@ def save_listings(search: SearchRecord, listings: dict[str, dict[str, Any]]) -> 
                     raw["variant"] = detect_variant(str(raw.get("title") or ""))
         except Exception:
             pass
+    listings = rotate_listings(listings)
     save_json(search.file_path("listings.json"), listings)
 
 
@@ -255,7 +289,7 @@ def load_seen(search: SearchRecord) -> dict[str, str]:
 
 
 def save_seen(search: SearchRecord, seen: dict[str, str]) -> None:
-    save_json(search.file_path("seen.json"), seen)
+    save_json(search.file_path("seen.json"), cap_seen(seen))
 
 
 def load_scan_state(search: SearchRecord) -> dict[str, Any]:

@@ -69,6 +69,8 @@ class ParsedItem:
     profit_abs: int | None = None
     profit_pct: float | None = None
     deal_badge: str | None = None
+    market_source: str | None = None
+    overpriced: bool = False
     geo_lat: float | None = None
     geo_lon: float | None = None
     tags: list[str] = field(default_factory=list)

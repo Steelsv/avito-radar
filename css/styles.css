@@ -1,6 +1,6 @@
 /* ==========================================================================
    AvitoRadar PRO - Telegram Mini App design system
-   Dark fintech style: #09090B base, single emerald accent #10B981
+   Dark fintech style: #09090B base, single yellow accent #FFCC00
    ========================================================================== */
 
 :root {
@@ -8,9 +8,9 @@
   --card: #121318;
   --card-2: #17191F;
   --border: rgba(255, 255, 255, 0.08);
-  --accent: #10B981;
-  --accent-soft: rgba(16, 185, 129, 0.12);
-  --accent-border: rgba(16, 185, 129, 0.38);
+  --accent: #FFCC00;
+  --accent-soft: rgba(255, 204, 0, 0.12);
+  --accent-border: rgba(255, 204, 0, 0.38);
   --danger: #F87171;
   --danger-soft: rgba(248, 113, 113, 0.10);
   --danger-border: rgba(248, 113, 113, 0.32);
@@ -62,7 +62,7 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
 .caption { font-size: 12px; color: var(--text-2); margin: 0; }
 .caption-dim { font-size: 11px; color: var(--text-3); margin: 0; }
 
-::selection { background: rgba(16, 185, 129, 0.3); }
+::selection { background: rgba(255, 204, 0, 0.3); }
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
@@ -212,18 +212,23 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
   transition: opacity 0.15s ease, border-color 0.15s ease, background 0.15s ease;
   user-select: none;
   width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.btn > span, .btn > svg { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn:active { opacity: 0.82; }
 .btn:disabled { opacity: 0.45; pointer-events: none; }
 
-.btn-accent { background: var(--accent); color: #04241A; }
+.btn-accent { background: var(--accent); color: #09090B; }
 .btn-ghost { background: var(--card); border-color: var(--border); color: var(--text); }
 .btn-ghost:active { border-color: rgba(255, 255, 255, 0.22); }
 .btn-danger { background: var(--danger-soft); border-color: var(--danger-border); color: var(--danger); }
 .btn-sm { height: 38px; font-size: 12px; padding: 0 14px; border-radius: 10px; }
 
-.btn-row { display: flex; gap: 8px; }
-.btn-row .btn { flex: 1; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-row .btn { flex: 1; min-width: 0; }
 
 /* ==========================================================================
    Chips (filters)
@@ -321,7 +326,7 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
   height: 20px;
   border-radius: 50%;
   background: var(--accent);
-  border: 3px solid #04241A;
+  border: 3px solid #09090B;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 .slider-input::-moz-range-thumb {
@@ -329,7 +334,7 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
   height: 14px;
   border-radius: 50%;
   background: var(--accent);
-  border: 3px solid #04241A;
+  border: 3px solid #09090B;
 }
 .slider-input::-moz-range-track { background: transparent; }
 .slider-ends { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-3); margin-top: 4px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -377,7 +382,7 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
 }
 .sl-toggle__dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(0, 0, 0, 0.35); }
 .sl-toggle[data-checked="true"] .sl-toggle__track { background: var(--accent); border-color: var(--accent); }
-.sl-toggle[data-checked="true"] .sl-toggle__thumb { transform: translateX(18px); background: #04241A; }
+.sl-toggle[data-checked="true"] .sl-toggle__thumb { transform: translateX(18px); background: #09090B; }
 .sl-toggle[data-checked="true"] .sl-toggle__dot { background: var(--accent); }
 
 /* Plain switch (radar cards) */
@@ -402,7 +407,7 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
   transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background 0.18s ease;
 }
 .switch input:checked ~ .switch-track { background: var(--accent); border-color: var(--accent); }
-.switch input:checked ~ .switch-thumb { transform: translateX(17px); background: #04241A; }
+.switch input:checked ~ .switch-thumb { transform: translateX(17px); background: #09090B; }
 
 /* ==========================================================================
    Bottom navigation
@@ -477,7 +482,7 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
   height: 52px;
   border-radius: 16px;
   background: var(--accent);
-  color: #04241A;
+  color: #09090B;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -502,8 +507,8 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
 .radar-card-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 11px; color: var(--text-3); }
 .radar-card-meta span { display: inline-flex; align-items: center; gap: 4px; }
 .radar-card-meta .mono { color: var(--text-2); }
-.radar-card-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-.radar-card-actions .btn { height: 36px; font-size: 12px; border-radius: 10px; }
+.radar-card-actions { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.radar-card-actions .btn { height: 36px; font-size: 12px; border-radius: 10px; min-width: 0; }
 
 /* ==========================================================================
    Lot cards (feed)
@@ -639,7 +644,7 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
 .market-analogs .mono { font-weight: 600; color: var(--text-2); }
 
 
-.lot-title { font-size: 14px; font-weight: 600; line-height: 1.35; margin: 0 0 8px; letter-spacing: -0.005em; }
+.lot-title { font-size: 14px; font-weight: 600; line-height: 1.35; margin: 0 0 8px; letter-spacing: -0.005em; word-break: break-word; min-width: 0; }
 
 .lot-price {
   font-family: var(--font-mono);
@@ -663,8 +668,8 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
 .lot-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--text-3); margin-bottom: 12px; }
 .lot-meta span { display: inline-flex; align-items: center; gap: 4px; }
 
-.lot-actions { display: flex; gap: 8px; }
-.lot-actions .btn { height: 40px; font-size: 12px; border-radius: 10px; }
+.lot-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.lot-actions .btn { height: 40px; font-size: 12px; border-radius: 10px; min-width: 0; }
 .lot-actions .btn-primary-outline {
   flex: 1.4;
   background: var(--accent-soft);
@@ -872,7 +877,7 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
   padding: 0 18px;
   border-radius: 10px;
   background: var(--accent);
-  color: #04241A;
+  color: #09090B;
   font-size: 12px;
   font-weight: 600;
 }
@@ -946,7 +951,7 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
   padding: 0 8px;
   border-radius: 9px;
   background: var(--accent);
-  color: #04241A;
+  color: #09090B;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1106,7 +1111,7 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
   font-size: 9px;
 }
 .scan-pill.active { color: var(--accent); border-color: var(--accent-border); }
-.scan-pill.active span { background: var(--accent); color: #04241A; }
+.scan-pill.active span { background: var(--accent); color: #09090B; }
 .scan-pill.done { color: var(--text-2); }
 .scan-pill.done span { background: var(--accent-soft); color: var(--accent); }
 
@@ -1128,7 +1133,7 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
    Mobile (< 768px) keeps the original single-column layout untouched.
    ========================================================================== */
 @media (min-width: 768px) {
-  :root { --content-max: 820px; --content-half: 410px; }
+  :root { --content-max: 920px; --content-half: 460px; }
 
   .app-header {
     padding-left: max(16px, calc(50% - var(--content-half)));
@@ -1244,6 +1249,42 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
 }
 .address-clear-btn:active { color: var(--danger); border-color: var(--danger-border); }
 .address-error { font-size: 11px; color: var(--danger); line-height: 1.4; margin-bottom: 8px; }
+.address-suggest {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  max-height: 240px;
+  overflow-y: auto;
+}
+.address-suggest-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 9px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-3);
+}
+.address-suggest-item:hover, .address-suggest-item.active { background: rgba(255, 255, 255, 0.05); }
+.address-suggest-item.active .address-suggest-pin { color: var(--accent); }
+.address-suggest-pin { flex: 0 0 auto; margin-top: 2px; }
+.address-suggest-text { min-width: 0; }
+.address-suggest-short { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.35; }
+.address-suggest-full { font-size: 11px; color: var(--text-3); line-height: 1.4; margin-top: 1px; overflow-wrap: break-word; }
+.address-suggest-empty {
+  padding: 10px 9px;
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.45;
+  pointer-events: none;
+}
 .feed-address-hint {
   display: flex;
   align-items: center;

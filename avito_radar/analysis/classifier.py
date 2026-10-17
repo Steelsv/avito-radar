@@ -908,6 +908,12 @@ def extract_goods_group(title: str) -> str:
     return f"{model}, {mem}" if mem else model
 
 
+def extract_broad_group(title: str) -> str:
+    """Goods group without the narrow config (storage suffix), e.g. 'iPhone 15 Pro'."""
+    key = extract_goods_group(title)
+    return key.split(",")[0].strip() or key
+
+
 def extract_desc_prices_for_query(description: str, query: str) -> list[int]:
     """Extract specific prices associated with the target model from the description."""
     if not description or not query:

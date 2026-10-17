@@ -49,6 +49,66 @@ def geocode_address(address: str, city: str | None = None) -> dict[str, Any] | N
     return {"lat": lat, "lon": lon, "display_name": display_name}
 
 
+def _build_short_name(first: dict[str, Any]) -> str:
+    addr = first.get("address")
+    if isinstance(addr, dict):
+        parts = [
+            str(addr.get("road") or "").strip(),
+            str(addr.get("house_number") or "").strip(),
+            str(addr.get("city") or addr.get("town") or addr.get("village") or "").strip(),
+        ]
+        short = ", ".join(p for p in parts if p)
+        if short:
+            return short
+    display = str(first.get("display_name") or "").strip()
+    parts = [p.strip() for p in display.split(",") if p.strip()]
+    return ", ".join(parts[:3]) if parts else display
+
+
+def suggest_addresses(query: str, city: str | None = None, limit: int = 5) -> list[dict[str, Any]]:
+    """Nominatim address autocomplete. Returns list of dicts, empty on failure."""
+    query = (query or "").strip()
+    if not query:
+        return []
+    q = query
+    if city and city.strip():
+        q = f"{query}, {city.strip()}"
+    params = {
+        "q": q,
+        "format": "jsonv2",
+        "limit": str(max(1, min(limit, 10))),
+        "countrycodes": "ru",
+        "accept-language": "ru",
+    }
+    try:
+        resp = requests.get(
+            NOMINATIM_URL, params=params, headers=NOMINATIM_HEADERS, timeout=NOMINATIM_TIMEOUT
+        )
+        resp.raise_for_status()
+        results = resp.json()
+    except Exception:
+        return []
+    if not isinstance(results, list):
+        return []
+    suggestions: list[dict[str, Any]] = []
+    for entry in results[:limit]:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            lat = float(entry["lat"])
+            lon = float(entry["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        display_name = str(entry.get("display_name") or query)
+        suggestions.append({
+            "display_name": display_name,
+            "short": _build_short_name(entry),
+            "lat": lat,
+            "lon": lon,
+        })
+    return suggestions
+
+
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance between two points, rounded to 0.1 km."""
     r = 6371.0

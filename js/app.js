@@ -152,7 +152,7 @@ function formatDistanceKm(km) {
 function buildDistanceBadgeHtml(lot) {
   const km = getLotDistanceKm(lot);
   if (km === null) return '';
-  const pinStroke = km <= 5 ? '#10B981' : 'currentColor';
+  const pinStroke = km <= 5 ? '#FFCC00' : 'currentColor';
   return `<span>
     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="${pinStroke}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
     <span class="mono">${escapeHtml(formatDistanceKm(km))}</span>
@@ -180,7 +180,7 @@ function buildPriceDropHtml(lot) {
 }
 
 const SELLER_SCORE_META = {
-  reliable: { color: '#10B981', icon: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>' },
+  reliable: { color: '#FFCC00', icon: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>' },
   reseller: { color: '#A1A1AA', icon: '<rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>' },
   new: { color: '#F87171', icon: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>' },
   regular: { color: '#A1A1AA', icon: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>' }
@@ -342,15 +342,22 @@ Object.assign(ApiService, {
     }
   },
 
+  // payload: string | {address} | {lat, lon, display_name}
   // Returns { ok: true, display_name, lat, lon } on 200,
   // { ok: false, message } on 422, { ok: false, offline: true } on network failure.
-  async setAddress(address) {
+  async setAddress(payload) {
     const uid = getCurrentUserId();
+    let body;
+    if (typeof payload === 'string' || payload == null) {
+      body = { user_id: uid, address: payload || '' };
+    } else {
+      body = { user_id: uid, ...payload };
+    }
     try {
       const res = await fetch(`${API_BASE_URL}/api/user/address`, {
         method: 'POST',
         headers: getApiHeaders(),
-        body: JSON.stringify({ user_id: uid, address: address || '' })
+        body: JSON.stringify(body)
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({ ok: true }));
@@ -364,6 +371,21 @@ Object.assign(ApiService, {
     } catch (err) {
       console.warn('[API] setAddress failed:', err.message);
       return { ok: false, offline: true, message: 'Сервер недоступен' };
+    }
+  },
+
+  // Address autocomplete. Returns array (may be empty) or null on network failure.
+  async suggestAddress(q) {
+    const uid = getCurrentUserId();
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/address/suggest?user_id=${encodeURIComponent(uid)}&q=${encodeURIComponent(q)}`, {
+        headers: getApiHeaders()
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return Array.isArray(data.suggestions) ? data.suggestions : [];
+    } catch (err) {
+      return null;
     }
   },
 
@@ -410,7 +432,7 @@ function showToast(message, type = 'info') {
   toast.className = `toast toast-${type}`;
 
   const icon = type === 'success'
-    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFCC00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
     : type === 'error'
     ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F87171" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
     : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A1A1AA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
@@ -713,7 +735,7 @@ function renderRadars() {
   if (State.searches.length === 0) {
     list.innerHTML = `
       <div class="empty-state">
-        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#FFCC00" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
         </svg>
         <div class="h3">Радары пока не настроены</div>
@@ -1024,7 +1046,7 @@ function renderAnalysisResult() {
   if (State.analysis.limited) {
     box.innerHTML = `
       <div class="card" style="text-align: center; border-color: var(--accent-border);">
-        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="margin: 4px auto 10px;"><path d="M11.6 3.3a.5.5 0 0 1 .8 0l2.9 5.5a1 1 0 0 0 1.5.3l4.3-3.6a.5.5 0 0 1 .8.5L19 16.2a1 1 0 0 1-1 .8H6a1 1 0 0 1-1-.8L2.1 6a.5.5 0 0 1 .8-.5l4.3 3.6a1 1 0 0 0 1.5-.3z"/><path d="M5 21h14"/></svg>
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#FFCC00" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="margin: 4px auto 10px;"><path d="M11.6 3.3a.5.5 0 0 1 .8 0l2.9 5.5a1 1 0 0 0 1.5.3l4.3-3.6a.5.5 0 0 1 .8.5L19 16.2a1 1 0 0 1-1 .8H6a1 1 0 0 1-1-.8L2.1 6a.5.5 0 0 1 .8-.5l4.3 3.6a1 1 0 0 0 1.5-.3z"/><path d="M5 21h14"/></svg>
         <div class="h3" style="margin-bottom: 6px;">Лимит оценок исчерпан</div>
         <p class="caption" style="margin-bottom: 16px; line-height: 1.55;">На бесплатном тарифе доступно ${State.user ? State.user.analysis_limit : 3} оценки в сутки. PRO снимает лимит полностью.</p>
         <button class="btn btn-accent" onclick="window.app.switchTab('pro')">Перейти на PRO</button>
@@ -1275,7 +1297,7 @@ function renderFeedEmpty(box) {
   if (State.searches.length === 0) {
     box.innerHTML = `
       <div class="empty-state">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#FFCC00" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
         <div class="h3">Сначала создайте радар</div>
         <p class="caption">Лента наполнится находками, как только радар начнет мониторинг Авито.</p>
         <button class="btn btn-accent" onclick="window.app.switchTab('radars'); window.app.openRadarSheet()">Создать радар</button>
@@ -1706,7 +1728,7 @@ function renderPro() {
     <div class="plan-hero is-pro">
       <div class="plan-hero-top">
         <div class="plan-name">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11.6 3.3a.5.5 0 0 1 .8 0l2.9 5.5a1 1 0 0 0 1.5.3l4.3-3.6a.5.5 0 0 1 .8.5L19 16.2a1 1 0 0 1-1 .8H6a1 1 0 0 1-1-.8L2.1 6a.5.5 0 0 1 .8-.5l4.3 3.6a1 1 0 0 0 1.5-.3z"/><path d="M5 21h14"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFCC00" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11.6 3.3a.5.5 0 0 1 .8 0l2.9 5.5a1 1 0 0 0 1.5.3l4.3-3.6a.5.5 0 0 1 .8.5L19 16.2a1 1 0 0 1-1 .8H6a1 1 0 0 1-1-.8L2.1 6a.5.5 0 0 1 .8-.5l4.3 3.6a1 1 0 0 0 1.5-.3z"/><path d="M5 21h14"/></svg>
           <span class="pro-mark">PRO</span>
         </div>
         <span id="proCountdown" class="plan-countdown">${u && u.pro_expires_at ? formatCountdown(u.pro_expires_at) : 'активен'}</span>
@@ -1816,7 +1838,7 @@ function renderPro() {
       <div class="caption-dim" style="text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 10px;">Мой адрес</div>
       ${hasAddress && !State.editingAddress ? `
         <div class="address-row">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto;"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFCC00" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 auto;"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
           <span class="address-text">${escapeHtml(u.home_address)}</span>
           <button class="address-clear-btn" onclick="window.app.clearAddress()" title="Удалить адрес">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -1833,7 +1855,8 @@ function renderPro() {
           <span class="input-icon">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
           </span>
-          <input type="text" id="addressInput" class="input" placeholder="Город, улица, дом" autocomplete="off" enterkeyhint="done" onkeydown="if (event.key === 'Enter') { event.preventDefault(); window.app.saveAddress(); }" value="${escapeHtml(hasAddress ? u.home_address : '')}">
+          <input type="text" id="addressInput" class="input" placeholder="Город, улица, дом" autocomplete="off" enterkeyhint="done" value="${escapeHtml(hasAddress ? u.home_address : '')}">
+          <div id="addressSuggest" class="address-suggest hidden"></div>
         </div>
         <div id="addressError" class="address-error ${State.addressError ? '' : 'hidden'}">${escapeHtml(State.addressError)}</div>
         <button class="btn btn-accent btn-sm" id="btnSaveAddress" ${State.addressSaving ? 'disabled' : ''} onclick="window.app.saveAddress()">
@@ -1873,28 +1896,187 @@ function renderPro() {
       el.textContent = formatCountdown(u.pro_expires_at);
     }, 30000);
   }
+
+  initAddressSuggest();
 }
 
-async function saveAddress() {
+// ==========================================================================
+// 33a. Address autocomplete (GET /api/address/suggest)
+// ==========================================================================
+const AddressSuggest = {
+  items: [],
+  active: -1,
+  timer: null,
+  reqId: 0,
+
+  render(items) {
+    const list = $('addressSuggest');
+    if (!list) return;
+    this.items = items;
+    this.active = -1;
+    list.innerHTML = '';
+
+    if (items.length === 0) {
+      list.innerHTML = '<div class="address-suggest-empty">Ничего не найдено - уточните улицу и город</div>';
+      list.classList.remove('hidden');
+      return;
+    }
+
+    items.forEach((s, i) => {
+      const short = String(s.short || '').trim();
+      const full = String(s.display_name || '').trim();
+      const item = document.createElement('div');
+      item.className = 'address-suggest-item';
+      item.dataset.idx = String(i);
+      item.innerHTML = `
+        <svg class="address-suggest-pin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+        <div class="address-suggest-text">
+          <div class="address-suggest-short">${escapeHtml(short || full)}</div>
+          ${full && full !== short ? `<div class="address-suggest-full">${escapeHtml(full)}</div>` : ''}
+        </div>
+      `;
+      item.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.select(i);
+      });
+      list.appendChild(item);
+    });
+    list.classList.remove('hidden');
+  },
+
+  close() {
+    const list = $('addressSuggest');
+    if (list) {
+      list.classList.add('hidden');
+      list.innerHTML = '';
+    }
+    this.items = [];
+    this.active = -1;
+  },
+
+  highlight() {
+    const list = $('addressSuggest');
+    if (!list) return;
+    list.querySelectorAll('.address-suggest-item').forEach(el => {
+      el.classList.toggle('active', Number(el.dataset.idx) === this.active);
+    });
+    const activeEl = list.querySelector('.address-suggest-item.active');
+    if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+  },
+
+  async query(q) {
+    if (q.trim().length < 3) {
+      this.close();
+      return;
+    }
+    const reqId = ++this.reqId;
+    const res = await ApiService.suggestAddress(q.trim());
+    if (reqId !== this.reqId) return;
+    if (res === null) {
+      this.close();
+      return;
+    }
+    this.render(res.slice(0, 5));
+  },
+
+  select(i) {
+    const s = this.items[i];
+    const input = $('addressInput');
+    if (!s || !input) return;
+    input.value = String(s.display_name || s.short || '');
+    this.close();
+    saveAddress({ lat: s.lat, lon: s.lon, display_name: s.display_name });
+  }
+};
+
+let addressSuggestDocBound = false;
+
+function initAddressSuggest() {
+  const input = $('addressInput');
+  if (!input || input.dataset.suggestBound === '1') return;
+  input.dataset.suggestBound = '1';
+
+  input.addEventListener('input', () => {
+    if (AddressSuggest.timer) clearTimeout(AddressSuggest.timer);
+    AddressSuggest.timer = setTimeout(() => {
+      AddressSuggest.query(input.value).catch(() => AddressSuggest.close());
+    }, 350);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    const list = $('addressSuggest');
+    const isOpen = list && !list.classList.contains('hidden') && AddressSuggest.items.length > 0;
+    if (!isOpen) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveAddress();
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      AddressSuggest.active = (AddressSuggest.active + 1) % AddressSuggest.items.length;
+      AddressSuggest.highlight();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      AddressSuggest.active = (AddressSuggest.active <= 0) ? AddressSuggest.items.length - 1 : AddressSuggest.active - 1;
+      AddressSuggest.highlight();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const idx = AddressSuggest.active >= 0 ? AddressSuggest.active : 0;
+      AddressSuggest.select(idx);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      AddressSuggest.close();
+    }
+  });
+
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      const list = $('addressSuggest');
+      if (list && list.contains(document.activeElement)) return;
+      AddressSuggest.close();
+    }, 120);
+  });
+
+  if (!addressSuggestDocBound) {
+    addressSuggestDocBound = true;
+    document.addEventListener('pointerdown', (e) => {
+      const list = $('addressSuggest');
+      const inp = $('addressInput');
+      if (!list || list.classList.contains('hidden')) return;
+      if (!list.contains(e.target) && e.target !== inp) AddressSuggest.close();
+    });
+  }
+}
+
+async function saveAddress(selected) {
   const input = $('addressInput');
   if (!input || State.addressSaving) return;
-  const value = (input.value || '').trim();
-  if (!value) {
-    State.addressError = 'Введите адрес';
-    const errEl = $('addressError');
-    if (errEl) {
-      errEl.textContent = State.addressError;
-      errEl.classList.remove('hidden');
+
+  let payload;
+  if (selected && typeof selected === 'object') {
+    payload = { lat: selected.lat, lon: selected.lon, display_name: selected.display_name };
+  } else {
+    const value = (input.value || '').trim();
+    if (!value) {
+      State.addressError = 'Введите адрес';
+      const errEl = $('addressError');
+      if (errEl) {
+        errEl.textContent = State.addressError;
+        errEl.classList.remove('hidden');
+      }
+      TelegramService.haptic('error');
+      return;
     }
-    TelegramService.haptic('error');
-    return;
+    payload = value;
   }
 
   State.addressSaving = true;
   const btn = $('btnSaveAddress');
   if (btn) btn.disabled = true;
 
-  const r = await ApiService.setAddress(value);
+  const r = await ApiService.setAddress(payload);
 
   State.addressSaving = false;
   if (btn) btn.disabled = false;
@@ -1903,7 +2085,8 @@ async function saveAddress() {
     State.addressError = '';
     State.editingAddress = false;
     if (!State.user) State.user = normalizeUser(null);
-    State.user.home_address = r.display_name || value;
+    State.user.home_address = r.display_name || (typeof payload === 'object' ? payload.display_name : payload);
+    AddressSuggest.close();
     TelegramService.haptic('success');
     showToast('Адрес сохранен', 'success');
     renderPro();

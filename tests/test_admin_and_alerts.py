@@ -141,7 +141,52 @@ def make_bot():
     return AvitoTelegramBot(cfg)
 
 
-class TestAdminCommands:
+class TestBargainFlow:
+    def _query(self, data, chat_id=111000):
+        return {
+            "id": "cbq1",
+            "message": {"chat": {"id": chat_id}, "message_id": 7},
+            "data": data,
+        }
+
+    def _make_bot(self, calls):
+        bot = make_bot()
+        bot.answer_callback = lambda cb_id, text="": calls.append(("answerCallbackQuery", cb_id, text)) or {"ok": True}
+        bot.call_api = lambda method, data=None, files=None: calls.append((method, data)) or {"ok": True}
+        return bot
+
+    def test_alert_keyboard_has_bargain_and_no_seller_url_button(self):
+        bot = self._make_bot([])
+        item = make_item(recommended_buy=58000)
+        photos = []
+        bot.call_api = lambda method, data=None, files=None: (photos.append((method, data)) or {"ok": True}) if method == "sendPhoto" else {"ok": True}
+        bot.send_photo_alert(111000, item, "iPhone 15")
+        kb = photos[0][1]["reply_markup"]["inline_keyboard"]
+        flat = [btn for row in kb for btn in row]
+        assert any(btn.get("callback_data") == "bargain_42" for btn in flat)
+        assert not any("Написать продавцу" in btn.get("text", "") and btn.get("url") for btn in flat)
+        assert any("Открыть на Авито" in btn.get("text", "") and btn.get("url") for btn in flat)
+        assert any(btn.get("callback_data") == "vanish_42" for btn in flat)
+
+    def test_bargain_sends_template_message(self):
+        sent = []
+        bot = self._make_bot([])
+        bot._find_user_item = lambda user_id, item_id: make_item(recommended_buy=58000)
+        bot.send_message = lambda chat_id, text, reply_markup=None: sent.append(text) or 1
+        bot.handle_callback_query(self._query("bargain_42"))
+        assert sent and "Готов(а) забрать сегодня" in sent[0]
+        assert "<b>58 000 ₽</b>" in sent[0]
+        assert "https://www.avito.ru/item_42" in sent[0]
+
+    def test_bargain_stale_item_answers_only(self):
+        calls = []
+        bot = self._make_bot(calls)
+        bot._find_user_item = lambda user_id, item_id: None
+        bot.send_message = lambda chat_id, text, reply_markup=None: calls.append(("sendMessage", text)) or 1
+        bot.handle_callback_query(self._query("bargain_999"))
+        assert any(c[0] == "answerCallbackQuery" and "устарел" in c[2] for c in calls)
+        assert not any(c[0] == "sendMessage" for c in calls)
+
     def _msg(self, text, chat_id=111000):
         return {"chat": {"id": chat_id}, "message_id": 5, "text": text}
 

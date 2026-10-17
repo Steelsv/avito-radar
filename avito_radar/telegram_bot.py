@@ -27,13 +27,13 @@ from typing import Any
 import requests
 
 from avito_radar import billing
-from avito_radar.analysis.classifier import classify_item, extract_goods_group, is_likely_fake_or_junk
-from avito_radar.analysis.market import annotate_market_prices, format_money
-from avito_radar.analysis.market_db import apply_global_market, get_variant_stats, update_market_db
+from avito_radar.analysis.classifier import classify_item, extract_broad_group, extract_goods_group, is_likely_fake_or_junk
+from avito_radar.analysis.market import annotate_market_prices, collect_price_groups, format_money, is_overpriced
+from avito_radar.analysis.market_db import apply_market_cascade, get_variant_stats, update_market_db
 from avito_radar.analysis.seller_score import score_seller
 from avito_radar.config import AppSettings, load_settings, save_settings
 from avito_radar.core.client import AvitoClient
-from avito_radar.core.geocoding import format_distance, geocode_address, lot_distance_km
+from avito_radar.core.geocoding import format_distance, geocode_address, lot_distance_km, suggest_addresses
 from avito_radar.engine import create_search_from_url, scan_search
 from avito_radar.exporters.excel import export_to_excel
 from avito_radar.notifications.telegram import (
@@ -490,6 +490,29 @@ POPULAR_CITIES = [
 
 SORT_BY_DATE = {"s": "104"}
 
+# In-memory TTL cache for Nominatim address suggestions
+ADDRESS_SUGGEST_CACHE: dict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = {}
+ADDRESS_SUGGEST_TTL_SEC = 300.0
+ADDRESS_SUGGEST_CACHE_MAX = 200
+
+
+def get_address_suggestions_cached(query: str, city: str | None = None) -> list[dict[str, Any]]:
+    q = (query or "").strip()
+    if len(q) < 3:
+        return []
+    cache_key = (q.lower(), (city or "").strip().lower())
+    now = time.time()
+    hit = ADDRESS_SUGGEST_CACHE.get(cache_key)
+    if hit and now - hit[0] < ADDRESS_SUGGEST_TTL_SEC:
+        return hit[1]
+    result = suggest_addresses(q, city=city)
+    if len(ADDRESS_SUGGEST_CACHE) >= ADDRESS_SUGGEST_CACHE_MAX:
+        oldest = sorted(ADDRESS_SUGGEST_CACHE.items(), key=lambda kv: kv[1][0])[: ADDRESS_SUGGEST_CACHE_MAX // 2]
+        for k, _ in oldest:
+            ADDRESS_SUGGEST_CACHE.pop(k, None)
+    ADDRESS_SUGGEST_CACHE[cache_key] = (now, result)
+    return result
+
 
 @dataclass
 class UserSession:
@@ -638,8 +661,8 @@ class AvitoTelegramBot:
                 ],
                 [
                     {
-                        "text": "💬 Написать продавцу",
-                        "url": item.url,
+                        "text": "💬 Шаблон торга",
+                        "callback_data": f"bargain_{item.id}",
                         "icon_custom_emoji_id": TG_EMOJI_PROFILE,
                     },
                     {
@@ -1344,6 +1367,51 @@ class AvitoTelegramBot:
         self.send_main_menu(chat_id)
         return
 
+    def _find_user_item(self, user_id: int, item_id: str) -> ParsedItem | None:
+        for d in load_pending_alerts(str(user_id)):
+            if str(d.get("id")) == str(item_id):
+                return pending_dict_to_item(d)
+        try:
+            searches = list_searches(user_id=user_id)
+        except Exception:
+            searches = []
+        for s in searches:
+            try:
+                raws = load_listings(s)
+            except Exception:
+                continue
+            for raw in raws.values():
+                try:
+                    item = parse_catalog_item(raw)
+                except Exception:
+                    continue
+                if str(item.id) == str(item_id):
+                    return item
+        return None
+
+    def handle_bargain_query(self, chat_id: int, cb_id: str, item_id: str) -> None:
+        item = self._find_user_item(chat_id, item_id)
+        if item is None:
+            self.answer_callback(cb_id, text="Лот устарел, откройте объявление на Авито")
+            return
+
+        self.answer_callback(cb_id, text="Шаблон ниже")
+
+        price = None
+        recommended = getattr(item, "recommended_buy", None)
+        if recommended:
+            price = int(recommended)
+        elif getattr(item, "price", None):
+            price = int(int(item.price) * 0.9) // 100 * 100
+        price_str = f"{price:,} ₽".replace(",", " ") if price else "вашу цену"
+        text = (
+            f"{tg_e(TG_EMOJI_PRICE_TAG, '🏷')} <b>Шаблон торга</b>\n\n"
+            "«Здравствуйте! Готов(а) забрать сегодня. Предложу "
+            f"<b>{price_str}</b> - возможен торг?»\n\n"
+            f"🔗 {item.url}"
+        )
+        self.send_message(chat_id, text)
+
     def handle_callback_query(self, query: dict[str, Any]) -> None:
         cb_id = query.get("id") or ""
         msg = query.get("message") or {}
@@ -1352,6 +1420,10 @@ class AvitoTelegramBot:
         data = str(query.get("data") or "")
 
         if not chat_id:
+            return
+
+        if data.startswith("bargain_"):
+            self.handle_bargain_query(chat_id, cb_id, data[len("bargain_"):])
             return
 
         self.answer_callback(cb_id)
@@ -1622,6 +1694,7 @@ class AvitoTelegramBot:
                     if s.max_price:
                         params["pmax"] = str(s.max_price)
 
+                    fresh_candidates: list[ParsedItem] = []
                     for page_num in range(1, s.watch_pages + 1):
                         page = client.fetch_catalog_page(
                             catalog_url=s.catalog_url,
@@ -1674,53 +1747,81 @@ class AvitoTelegramBot:
                                 if is_repub:
                                     continue
 
-                            # Calculate market diff
-                            parsed_list = []
-                            for it in listings.values():
-                                p_it = parse_catalog_item(it)
-                                classify_item(p_it, category_type=s.category_type, search_query=q_str)
-                                parsed_list.append(p_it)
-                            stats_map = annotate_market_prices(
-                                parsed_list,
-                                group_key_fn=lambda x: extract_goods_group(x.title) if s.category_type == "goods" else "all",
-                            )
+                            fresh_candidates.append(parsed)
 
-                            # Feed the global variant market DB with this search's valid listings
+                    # Market analysis: one pass over all listings per cycle (was per item)
+                    if fresh_candidates:
+                        q_str = s.title or s.params.get("q", "")
+                        parsed_list = []
+                        for it in listings.values():
+                            p_it = parse_catalog_item(it)
+                            classify_item(p_it, category_type=s.category_type, search_query=q_str)
+                            parsed_list.append(p_it)
+
+                        def _variant_key(x: ParsedItem) -> str:
+                            return str(x.variant or extract_goods_group(x.title)) if s.category_type == "goods" else "all"
+
+                        stats_map = annotate_market_prices(parsed_list, group_key_fn=_variant_key)
+                        group_map = (
+                            collect_price_groups(parsed_list, lambda x: extract_broad_group(x.title))
+                            if s.category_type == "goods"
+                            else {}
+                        )
+
+                        # Feed the global variant market DB with this search's valid listings
+                        try:
+                            update_market_db(parsed_list, s.category_type)
+                        except Exception as db_exc:
+                            logger.warning("market_db update failed for %s: %s", s.name, db_exc)
+
+                        # Track price history for every lot seen in this scan
+                        for it in parsed_list:
                             try:
-                                update_market_db(parsed_list, s.category_type)
-                            except Exception as db_exc:
-                                logger.warning("market_db update failed for %s: %s", s.name, db_exc)
+                                price_history.record_price(it.id, it.price)
+                            except Exception as ph_exc:
+                                logger.debug("price_history record failed: %s", ph_exc)
 
-                            # Update parsed item stats
-                            for it in parsed_list:
-                                if it.id == parsed.id:
-                                    parsed.market_price = it.market_price
-                                    parsed.market_diff_percent = it.market_diff_percent
-                                    parsed.market_samples = getattr(it, "market_samples", None)
-                                    parsed.market_min_price = getattr(it, "market_min_price", None)
-                                    parsed.variant = it.variant
-                                    parsed.tags = it.tags
-                                    break
+                        by_id = {it.id: it for it in parsed_list}
+                        drop_pct = getattr(s, "drop_overpriced_pct", 50) or 0
+                        _MARKET_FIELDS = (
+                            "market_price", "market_diff_percent", "market_samples", "market_min_price",
+                            "market_median", "recommended_buy", "profit_abs", "profit_pct", "deal_badge",
+                            "market_source", "market_is_global", "variant", "tags",
+                        )
+                        with_market = overpriced_skipped = alerted = 0
+                        for parsed in fresh_candidates:
+                            full = by_id.get(parsed.id)
+                            if full is not None:
+                                if s.category_type == "goods":
+                                    try:
+                                        apply_market_cascade(
+                                            full,
+                                            stats_map.get(_variant_key(full)),
+                                            group_map.get(extract_broad_group(full.title)),
+                                        )
+                                    except Exception as db_exc:
+                                        logger.warning("market_db cascade failed for %s: %s", parsed.variant, db_exc)
+                                for attr in _MARKET_FIELDS:
+                                    setattr(parsed, attr, getattr(full, attr, None))
 
-                            # Weak local data for this variant? Backfill from the global market DB
-                            if s.category_type == "goods" and parsed.variant:
-                                try:
-                                    apply_global_market(parsed, stats_map.get(parsed.variant))
-                                except Exception as db_exc:
-                                    logger.warning("market_db lookup failed for %s: %s", parsed.variant, db_exc)
-
-                            # Track price history for every lot seen in this scan
-                            for it in parsed_list:
-                                try:
-                                    price_history.record_price(it.id, it.price)
-                                except Exception as ph_exc:
-                                    logger.debug("price_history record failed: %s", ph_exc)
+                            if parsed.market_price:
+                                with_market += 1
+                            parsed.overpriced = is_overpriced(parsed, drop_pct)
+                            if parsed.overpriced:
+                                overpriced_skipped += 1
+                                logger.info(
+                                    "Overpriced lot skipped (search=%s, price=%s, market=%s, +%s%% > %s%%)",
+                                    s.name, parsed.price, parsed.market_price,
+                                    parsed.market_diff_percent, drop_pct,
+                                )
+                                continue
 
                             # Photo-repost dedup: same images under a new id do not re-alert
                             if dedup.check_and_mark_post(s, parsed):
                                 continue
 
                             append_alert(s, parsed)
+                            alerted += 1
                             target_chat_id = None
                             if s.user_id and str(s.user_id).isdigit() and int(s.user_id) > 0:
                                 target_chat_id = int(s.user_id)
@@ -1742,6 +1843,11 @@ class AvitoTelegramBot:
                                         queue_pending_alert(target_chat_id, item_to_pending_dict(parsed, s.title))
                                 except Exception as alert_err:
                                     logger.warning("Failed to send alert to user %s for %s: %s", target_chat_id, s.name, alert_err)
+
+                        logger.info(
+                            "monitoring %s: new_lots=%d alerted=%d with_market_price=%d overpriced_skipped=%d total_listings=%d",
+                            s.name, len(fresh_candidates), alerted, with_market, overpriced_skipped, len(listings),
+                        )
 
                     if changed:
                         save_listings(s, listings)
@@ -1889,7 +1995,24 @@ def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
         for it in items:
             classify_item(it, category_type=s.category_type, search_query=s.title)
         items = [it for it in items if not getattr(it, "is_mismatched_model", False)]
-        annotate_market_prices(items)
+        annotate_market_prices(
+            items,
+            group_key_fn=(lambda x: str(x.variant or extract_goods_group(x.title))) if s.category_type == "goods" else None,
+        )
+        if s.category_type == "goods":
+            variant_map = collect_price_groups(items, lambda x: str(x.variant or extract_goods_group(x.title)))
+            group_map = collect_price_groups(items, lambda x: extract_broad_group(x.title))
+            drop_pct = getattr(s, "drop_overpriced_pct", 50) or 0
+            for it in items:
+                try:
+                    apply_market_cascade(
+                        it,
+                        variant_map.get(str(it.variant or extract_goods_group(it.title))),
+                        group_map.get(extract_broad_group(it.title)),
+                    )
+                except Exception as exc:
+                    logger.debug("market cascade failed in bundle for %s: %s", it.id, exc)
+                it.overpriced = is_overpriced(it, drop_pct)
 
         searches_list.append({
             "id": s.name,
@@ -1928,6 +2051,8 @@ def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
                 "profit_abs": getattr(it, "profit_abs", None),
                 "profit_pct": getattr(it, "profit_pct", None),
                 "deal_badge": getattr(it, "deal_badge", None),
+                "market_source": getattr(it, "market_source", None),
+                "overpriced": bool(getattr(it, "overpriced", False)),
                 "url": it.url,
                 "avitoUrl": it.url,
                 "address": it.address,
@@ -1973,6 +2098,8 @@ def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
                     "profit_abs": getattr(it, "profit_abs", None),
                     "profit_pct": getattr(it, "profit_pct", None),
                     "deal_badge": getattr(it, "deal_badge", None),
+                    "market_source": getattr(it, "market_source", None),
+                    "overpriced": bool(getattr(it, "overpriced", False)),
                     "price_drop": _lot_price_drop(it),
                     "seller_score": score_seller(it),
                     "market_min_price": getattr(it, "market_min_price", None),
@@ -2278,6 +2405,27 @@ def start_healthcheck_server() -> None:
                     self.send_error_json(500, str(exc))
                 return
 
+            if path == "/api/address/suggest":
+                try:
+                    q = (query_params.get("q", [""])[0] or "").strip()
+                    if len(q) < 3:
+                        self.send_json(200, {"suggestions": []})
+                        return
+                    city_hint = ""
+                    try:
+                        ask_uid = (query_params.get("user_id", [""])[0] or uid).strip()
+                        own_searches = list_searches(user_id=ask_uid)
+                        if own_searches and own_searches[0].city:
+                            city_hint = own_searches[0].city
+                    except Exception:
+                        city_hint = ""
+                    suggestions = get_address_suggestions_cached(q, city=city_hint or None)
+                    self.send_json(200, {"suggestions": suggestions})
+                except Exception as exc:
+                    logger.warning("Error getting address suggestions: %s", exc)
+                    self.send_error_json(500, str(exc))
+                return
+
             if path == "/api/suggest":
                 try:
                     q = query_params.get("q", [""])[0].strip()
@@ -2430,8 +2578,27 @@ def start_healthcheck_server() -> None:
 
             if path == "/api/user/address":
                 try:
-                    addr = str(req_data.get("address") or "").strip()
                     addr_uid = str(req_data.get("user_id") or uid).strip()
+
+                    # Новый флоу: фронт присылает готовые координаты из автокомплита
+                    lat_raw = req_data.get("lat")
+                    lon_raw = req_data.get("lon")
+                    if lat_raw is not None or lon_raw is not None:
+                        try:
+                            lat = float(lat_raw)
+                            lon = float(lon_raw)
+                        except (TypeError, ValueError):
+                            self.send_error_json(400, "lat and lon must be numbers")
+                            return
+                        if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                            self.send_error_json(400, "lat must be in -90..90, lon in -180..180")
+                            return
+                        display_name = str(req_data.get("display_name") or "").strip() or f"{lat}, {lon}"
+                        users_store.set_home_address(addr_uid, display_name, lat, lon)
+                        self.send_json(200, {"ok": True, "display_name": display_name, "lat": lat, "lon": lon})
+                        return
+
+                    addr = str(req_data.get("address") or "").strip()
                     if not addr:
                         users_store.clear_home_address(addr_uid)
                         self.send_json(200, {"ok": True, "cleared": True})

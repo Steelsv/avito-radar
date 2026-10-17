@@ -57,6 +57,8 @@ def clear_deal_fields(item: Any) -> None:
     item.profit_pct = None
     item.deal_badge = None
     item.market_min_price = None
+    item.market_source = None
+    item.overpriced = False
 
 
 @dataclass(frozen=True)
@@ -114,6 +116,46 @@ def calculate_group_stats(prices: Sequence[int]) -> PriceStats | None:
         min_price=min(filtered),
         max_price=max(filtered),
     )
+
+
+def collect_price_groups(items: list[ParsedItem], group_key_fn: Any) -> dict[str, PriceStats]:
+    """Price stats per group key over the same valid prices annotate_market_prices uses."""
+    from avito_radar.analysis.classifier import is_likely_fake_or_junk
+
+    groups: dict[str, list[int]] = {}
+    for item in items:
+        if getattr(item, "is_defect", False) or getattr(item, "is_exchange_or_wtb", False):
+            continue
+        real_p = getattr(item, "real_price_in_desc", None)
+        if real_p and real_p >= 1000:
+            price = real_p
+        else:
+            if getattr(item, "is_accessory", False) or getattr(item, "is_mismatched_model", False):
+                continue
+            if is_likely_fake_or_junk(item):
+                continue
+            if not item.price:
+                continue
+            price = item.price
+        groups.setdefault(group_key_fn(item), []).append(price)
+
+    stats_map: dict[str, PriceStats] = {}
+    for key, prices in groups.items():
+        stats = calculate_group_stats(prices)
+        if stats:
+            stats_map[key] = stats
+    return stats_map
+
+
+def is_overpriced(item: Any, drop_overpriced_pct: float = 50) -> bool:
+    """True when the lot costs more than market*(1+pct/100) and market is known."""
+    market = getattr(item, "market_price", None)
+    if not market or market <= 0:
+        return False
+    price = getattr(item, "real_price_in_desc", None) or getattr(item, "price", None)
+    if not price or price <= 0:
+        return False
+    return price > market * (1 + float(drop_overpriced_pct) / 100.0)
 
 
 def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) -> dict[str, PriceStats]:

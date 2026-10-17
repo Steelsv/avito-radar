@@ -287,8 +287,9 @@ const TelegramService = {
       } catch (_) {}
 
       if (this.isDesktop()) {
-        // Desktop (PC Telegram): keep the compact window - no expand, no fullscreen request.
-        // Users prefer the small window; fullscreen stays opt-in via the header button.
+        // Desktop (PC Telegram): expand gives a wide window (not fullscreen) on tdesktop.
+        // No requestFullscreen() anywhere - fullscreen stays opt-in via the header button.
+        try { tg.expand(); } catch (_) {}
       } else {
         // Mobile (iPhone / Android): DO NOT force requestFullscreen (prevents notch / status bar overlap bugs).
         // Only use native tg.expand() for standard bottom-sheet expansion.
