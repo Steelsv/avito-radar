@@ -25,8 +25,8 @@ function getBotToken() {
       } catch (_) {}
     }
   }
-  // Default fallback token
-  return '5928342984:AAHRFliTSZwTaRYcp4m6Tkl0SCDtWnvN2mA';
+  // No fallback token: set TELEGRAM_BOT_TOKEN in .env or data/telegram.json
+  return null;
 }
 
 // Custom Telegram Emojis (Telegram iOS Icons pack: https://emoji.wivvi.net / tgiosicons)

@@ -6,6 +6,7 @@ for view counts (total vs today) to filter out re-published old ads.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -52,6 +53,9 @@ class ParsedItem:
     is_republished: bool = False
     market_price: int | None = None
     market_diff_percent: float | None = None
+    market_samples: int | None = None
+    market_is_global: bool = False
+    variant: str | None = None
     real_price_in_desc: int | None = None
     is_combo_listing: bool = False
     is_accessory: bool = False
@@ -60,6 +64,13 @@ class ParsedItem:
     defect_type: str | None = None
     is_exchange_or_wtb: bool = False
     is_in_desc_or_list: bool = False
+    market_median: int | None = None
+    recommended_buy: int | None = None
+    profit_abs: int | None = None
+    profit_pct: float | None = None
+    deal_badge: str | None = None
+    geo_lat: float | None = None
+    geo_lon: float | None = None
     tags: list[str] = field(default_factory=list)
 
 
@@ -72,6 +83,23 @@ def format_price(value: int | None) -> str:
 def _extract_iva_payloads(item: dict[str, Any], step: str) -> list[dict[str, Any]]:
     steps = (item.get("iva") or {}).get(step) or []
     return [e.get("payload") or {} for e in steps if isinstance(e, dict)]
+
+
+def _extract_coords(item: dict[str, Any]) -> tuple[float | None, float | None]:
+    for key in ("coords", "geo", "location"):
+        holder = item.get(key)
+        if not isinstance(holder, dict):
+            continue
+        lat = holder.get("lat")
+        lon = holder.get("lng", holder.get("lon"))
+        try:
+            lat_f = float(lat)
+            lon_f = float(lon)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(lat_f) and math.isfinite(lon_f) and -90.0 <= lat_f <= 90.0 and -180.0 <= lon_f <= 180.0:
+            return lat_f, lon_f
+    return None, None
 
 
 def parse_catalog_item(item: dict[str, Any]) -> ParsedItem:
@@ -89,6 +117,7 @@ def parse_catalog_item(item: dict[str, Any]) -> ParsedItem:
     geo = item.get("geo") or {}
     coords = item.get("coords") or {}
     address = str(coords.get("address_user") or geo.get("formattedAddress") or "").strip()
+    geo_lat, geo_lon = _extract_coords(item)
 
     metro = ""
     refs = geo.get("geoReferences") or []
@@ -182,6 +211,8 @@ def parse_catalog_item(item: dict[str, Any]) -> ParsedItem:
         images=images,
         description=description,
         phone_available=phone_available,
+        geo_lat=geo_lat,
+        geo_lon=geo_lon,
     )
 
 

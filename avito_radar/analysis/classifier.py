@@ -365,6 +365,188 @@ def parse_item_model(title: str, description: str = "") -> dict[str, Any]:
     if re.search(r"(?<!\w)(?:esim|есим|e-sim)(?!\w)", full, re.I):
         item["features"].append("esim")
 
+    # RAM (12/256 style or explicit "8GB RAM / 8 ГБ ОЗУ")
+    ram_m = re.search(
+        r"(?<![\d/])(\d{1,2})\s*/\s*(?:64|128|256|512|1024)\b|"
+        r"(?<!\w)(\d{1,2})\s*(?:gb|гб)\s*(?:ram|ozu|озу|оператив\w*)",
+        t, re.I,
+    )
+    if ram_m:
+        ram_val = ram_m.group(1) or ram_m.group(2)
+        if ram_val and int(ram_val) <= 24:
+            item["ram"] = f"{ram_val}gb"
+
+    # --- Apple Watch / AirPods / iPad / MacBook (MUST be checked before iPhone:
+    # --- bare "11"/"13" in their titles would otherwise trigger the loose iPhone pattern)
+    watch_m = re.search(r"(?<!\w)(?:apple\s*watch|iwatch|апл\s*вотч|watch\s+(?:series|ultra|se))(?!\w)", t)
+    if watch_m:
+        item["brand"] = "apple_watch"
+        if re.search(r"(?<!\w)ultra(?!\w)", t):
+            item["sub_model"] = "ultra"
+        elif re.search(r"(?<!\w)se(?!\w)", t):
+            item["sub_model"] = "se"
+        else:
+            item["sub_model"] = "series"
+        gen_m = (
+            re.search(r"(?<!\w)(?:series|серия|серии)\s*(\d{1,2})(?!\d)", t)
+            or re.search(r"(?<!\w)(?:ultra|se)\s*(\d)(?!\d)", t)
+        )
+        if gen_m:
+            item["model_number"] = gen_m.group(1)
+        size_m = re.search(r"(?<!\w)(3[89]|4[0-9]|5[0-9])\s*(?:mm|мм)(?!\w)", t)
+        if size_m:
+            item["size"] = f"{size_m.group(1)}mm"
+        return item
+
+    if re.search(r"(?<!\w)(?:air\s*pods|аирподс\w*)(?!\w)", t):
+        item["brand"] = "apple_airpods"
+        if re.search(r"(?<!\w)max(?!\w)", t):
+            item["sub_model"] = "max"
+        elif re.search(r"(?<!\w)pro(?!\w)", t):
+            item["sub_model"] = "pro"
+        else:
+            item["sub_model"] = "base"
+        gen_m = (
+            re.search(r"(?<!\w)(?:pro|max)\s*(\d)(?!\d)", t)
+            or re.search(r"(?<!\w)(?:air\s*pods|аирподс\w*)\s*(\d{1,2})(?!\d)", t)
+            or re.search(r"(?<!\w)(\d)(?:st|nd|rd|th)\s*(?:gen|поколение)", t)
+        )
+        if gen_m:
+            item["model_number"] = gen_m.group(1)
+        return item
+
+    if re.search(r"(?<!\w)(?:ipad|i-pad|айпад|ипад)(?!\w)", t):
+        item["brand"] = "apple_ipad"
+        if re.search(r"(?<!\w)(?:pro|про)(?!\w)", t):
+            item["sub_model"] = "pro"
+        elif re.search(r"(?<!\w)air(?!\w)", t):
+            item["sub_model"] = "air"
+        elif re.search(r"(?<!\w)(?:mini|мини)(?!\w)", t):
+            item["sub_model"] = "mini"
+        else:
+            item["sub_model"] = "base"
+        chip_m = re.search(r"(?<!\w)m([1-4])(?!\w)", t)
+        if chip_m:
+            item["model_number"] = f"m{chip_m.group(1)}"
+        else:
+            gen_m = (
+                re.search(r"(?<!\w)(?:air|mini|мини)\s+(\d{1,2})(?!\d)", t)
+                or re.search(r"(?<!\w)(?:ipad|айпад|ипад)\s+(\d{1,2})(?![\.\d])", t)
+            )
+            if gen_m:
+                gen_val = int(gen_m.group(1))
+                if gen_val > 10:
+                    item["size"] = gen_m.group(1)
+                else:
+                    item["model_number"] = gen_m.group(1)
+        size_m = (
+            re.search(r"(?<!\w)(8\.3|9\.7|10\.2|10\.5|10\.9|12\.9)(?!\d)", t)
+            or (re.search(r"(?<!\w)(?:pro|про)\s*(11|13)(?!\d)", t) if item["sub_model"] == "pro" else None)
+        )
+        if size_m and not item.get("size"):
+            item["size"] = size_m.group(1)
+        return item
+
+    if re.search(r"(?<!\w)(?:macbook|mac\s*book|макбук)(?!\w)", t):
+        item["brand"] = "apple_macbook"
+        if re.search(r"(?<!\w)(?:pro|про)(?!\w)", t):
+            item["sub_model"] = "pro"
+        elif re.search(r"(?<!\w)air(?!\w)", t):
+            item["sub_model"] = "air"
+        else:
+            item["sub_model"] = "base"
+        chip_m = re.search(r"(?<!\w)m([1-4])\s*(pro|max)?(?!\w)", t)
+        if chip_m:
+            item["model_number"] = f"m{chip_m.group(1)}" + (f" {chip_m.group(2)}" if chip_m.group(2) else "")
+        size_m = re.search(r"(?<!\w)(13\.3|13\.6|14\.2|15\.3|13|14|15|16)(?=[\s\"”]|$|,)", t)
+        if size_m:
+            item["size"] = size_m.group(1)
+        return item
+
+    # --- Android phones (before iPhone: "Redmi Note 13" contains bare "13") ---
+    galaxy_m = re.search(r"(?<!\w)(?:samsung|galaxy|самсунг|галакси)(?!\w)", t)
+    if galaxy_m and not re.search(r"(?<!\w)(?:tab|buds|watch|book|tabom|часы)(?!\w)", t):
+        item["brand"] = "samsung_galaxy"
+        note_m = re.search(r"(?<!\w)note\s*(\d{1,2})\s*(pro\s*\+|pro\s*plus|pro|ultra|plus|\+)?", t)
+        s_m = re.search(r"(?<!\w)[sс](\d{1,2})\s*(ultra|plus|\+|fe)?(?!\w)", t)
+        am_m = re.search(r"(?<!\w)([amам])(\d{2,3})\s*[a-z]?(?!\w)", t)
+        sub_tokens: list[str] = []
+        if note_m:
+            item["model_number"] = f"note {note_m.group(1)}"
+            sub_raw = note_m.group(2) or ""
+        elif s_m:
+            item["model_number"] = f"s{s_m.group(1)}"
+            sub_raw = s_m.group(2) or ""
+        elif am_m:
+            letter = "a" if am_m.group(1) in ("a", "а") else "m"
+            item["model_number"] = f"{letter}{am_m.group(2)}"
+            sub_raw = ""
+        else:
+            sub_raw = ""
+        if sub_raw:
+            if "pro" in sub_raw:
+                sub_tokens.append("pro")
+            if "ultra" in sub_raw:
+                sub_tokens.append("ultra")
+            if "+" in sub_raw or "plus" in sub_raw:
+                sub_tokens.append("plus")
+            if "fe" in sub_raw:
+                sub_tokens.append("fe")
+        if re.search(r"(?<!\w)(?:ultra|ультра)(?!\w)", t):
+            if "ultra" not in sub_tokens:
+                sub_tokens.append("ultra")
+        item["sub_model"] = " ".join(sub_tokens) if sub_tokens else "base"
+        return item
+
+    mi_m = re.search(r"(?<!\w)(?:xiaomi|redmi|poco|сяоми|редми|поко)(?!\w)", t)
+    if mi_m:
+        if re.search(r"(?<!\w)(?:poco|поко)(?!\w)", t):
+            item["brand"] = "poco"
+        elif re.search(r"(?<!\w)(?:redmi|редми)(?!\w)", t):
+            item["brand"] = "redmi"
+        else:
+            item["brand"] = "xiaomi"
+        note_m = re.search(r"(?<!\w)note\s*(\d{1,2})\s*(pro\s*\+|pro\s*plus|pro|ultra|plus|\+|s)?", t)
+        poco_m = re.search(r"(?<!\w)(?:poco|поко)\s*([xfmc])(\d{1,2})\s*(pro|gt|plus|\+)?", t)
+        redmi_m = re.search(r"(?<!\w)(?:redmi|редми)\s*(\d{1,2})\s*([a-c])?(?!\w)", t)
+        mi_m2 = re.search(r"(?<!\w)(?:xiaomi|сяоми)\s*(?:mi\s*)?(\d{1,2})\s*(t\s*pro|t|pro|ultra|lite)?", t)
+        sub_raw = ""
+        if note_m:
+            item["model_number"] = f"note {note_m.group(1)}"
+            sub_raw = note_m.group(2) or ""
+        elif poco_m:
+            item["model_number"] = f"{poco_m.group(1)}{poco_m.group(2)}"
+            sub_raw = poco_m.group(3) or ""
+        elif mi_m2 and item["brand"] == "xiaomi":
+            item["model_number"] = mi_m2.group(1)
+            sub_raw = mi_m2.group(2) or ""
+        elif redmi_m:
+            item["model_number"] = f"{redmi_m.group(1)}{redmi_m.group(2) or ''}"
+        sub_raw = sub_raw.replace("+", " plus").replace("  ", " ").strip()
+        item["sub_model"] = re.sub(r"\s+", " ", sub_raw) if sub_raw else "base"
+        return item
+
+    pixel_m = re.search(r"(?<!\w)(?:google\s+)?pixel\s*(\d{1,2})\s*(pro\s*xl|pro|fold|a)?(?!\w)", t)
+    if pixel_m and re.search(r"(?<!\w)(?:google|pixel\s*\d|пиксел)(?!\w)", t):
+        item["brand"] = "google_pixel"
+        item["model_number"] = pixel_m.group(1)
+        item["sub_model"] = re.sub(r"\s+", " ", pixel_m.group(2) or "").strip() or "base"
+        return item
+
+    # --- RAM kits (DDR4/DDR5) ---
+    ddr_m = re.search(r"(?<!\w)(?:ddr|ддр)\s*([2345])(?!\w)", t)
+    if ddr_m and (re.search(r"(?<!\w)\d{1,3}\s*(?:gb|гб)(?!\w)", t) or re.search(r"(?<!\w)\d{3,4}\s*(?:mhz|мгц)(?!\w)", t)):
+        item["brand"] = f"ram_ddr{ddr_m.group(1)}"
+        cap_m = re.search(r"(?<!\w)(\d{1,3})\s*(?:gb|гб)(?!\w)", t)
+        if cap_m and not item.get("storage"):
+            item["storage"] = f"{cap_m.group(1)}gb"
+        speed_m = re.search(r"(?<!\w)(\d{3,4})\s*(?:mhz|мгц)(?!\w)", t)
+        if speed_m:
+            item["model_number"] = speed_m.group(1)
+        if re.search(r"(?<!\w)sodimm|со-?димм(?!\w)", t):
+            item["sub_model"] = "sodimm"
+        return item
+
     # iPhone
     if re.search(r"(?<!\w)(?:iphone|айфон|айфончик)(?!\w)|(?<!\w)1[1-6]\s*(?:pro|max|plus|mini|про|макс|плюс|мини)?(?!\w)", t, re.I):
         item["brand"] = "apple_iphone"
@@ -413,6 +595,10 @@ def parse_item_model(title: str, description: str = "") -> dict[str, Any]:
         item["model_number"] = gpu_m.group(2)
         sub = re.sub(r"\s+", " ", gpu_m.group(3) or "").strip().lower()
         item["sub_model"] = sub if sub else "base"
+        if not item.get("storage"):
+            vram_m = re.search(r"(?<!\w)(4|6|8|12|16|24|32)\s*(?:gb|гб)(?!\w)", t, re.I)
+            if vram_m:
+                item["storage"] = f"{vram_m.group(1)}gb"
         return item
 
     # PlayStation
@@ -424,6 +610,50 @@ def parse_item_model(title: str, description: str = "") -> dict[str, Any]:
             item["sub_model"] = "pro"
         elif re.search(r"(?<!\w)(?:slim|слим)(?!\w)", t, re.I):
             item["sub_model"] = "slim"
+        else:
+            item["sub_model"] = "base"
+        if re.search(r"(?<!\w)(?:digital|диджитал|цифров\w*)(?!\w)|без\s+(?:диска|дисковода)", t, re.I):
+            item["features"].append("digital")
+        return item
+
+    # Xbox
+    if re.search(r"(?<!\w)(?:xbox|иксбокс|x-box)(?!\w)", t, re.I):
+        item["brand"] = "xbox"
+        if re.search(r"(?<!\w)series(?!\w)", t, re.I):
+            item["sub_model"] = "series"
+        elif re.search(r"(?<!\w)one(?!\w)", t, re.I):
+            item["sub_model"] = "one"
+        elif re.search(r"(?<!\w)360(?!\w)", t, re.I):
+            item["sub_model"] = "360"
+        else:
+            item["sub_model"] = "base"
+        rev_m = re.search(r"(?<!\w)(?:series|one)\s*([xs])(?!\w)", t, re.I)
+        if rev_m:
+            item["model_number"] = rev_m.group(1).lower()
+        return item
+
+    # Nintendo Switch
+    if re.search(r"(?<!\w)(?:nintendo|нинтендо)(?!\w)", t, re.I) or (
+        re.search(r"(?<!\w)switch(?!\w)", t, re.I)
+        and re.search(r"(?<!\w)(?:oled|lite|neon|joy-?con|консоль|приставк\w*)(?!\w)", t, re.I)
+        and not re.search(r"(?<!\w)(?:коммутатор|cisco|ethernet|сетев\w*)(?!\w)", t, re.I)
+    ):
+        item["brand"] = "nintendo_switch"
+        if re.search(r"(?<!\w)oled(?!\w)", t, re.I):
+            item["sub_model"] = "oled"
+        elif re.search(r"(?<!\w)lite(?!\w)", t, re.I):
+            item["sub_model"] = "lite"
+        else:
+            item["sub_model"] = "base"
+        return item
+
+    # Steam Deck
+    if re.search(r"(?<!\w)steam\s*deck(?!\w)|стим\s*дек", t, re.I):
+        item["brand"] = "steam_deck"
+        if re.search(r"(?<!\w)oled(?!\w)", t, re.I):
+            item["sub_model"] = "oled"
+        elif re.search(r"(?<!\w)lcd(?!\w)", t, re.I):
+            item["sub_model"] = "lcd"
         else:
             item["sub_model"] = "base"
         return item
@@ -480,18 +710,195 @@ def is_item_matching_search(title: str, description: str, query: str) -> bool:
     return True
 
 
+def _fmt_storage(storage: str | None) -> str:
+    if not storage:
+        return ""
+    return storage.replace("gb", "GB").replace("tb", "TB")
+
+
+_SUB_DISPLAY = {
+    "pro": "Pro", "max": "Max", "plus": "Plus", "ultra": "Ultra", "mini": "mini",
+    "fe": "FE", "xl": "XL", "se": "SE", "ti": "Ti", "super": "Super",
+    "xt": "XT", "xtx": "XTX", "gt": "GT", "lite": "Lite", "oled": "OLED",
+    "lcd": "LCD", "t": "T", "s": "S", "x": "X", "fold": "Fold",
+}
+
+
+def _display_sub(sub: str | None) -> str:
+    if not sub or sub == "base":
+        return ""
+    return " ".join(_SUB_DISPLAY.get(tok, tok.capitalize()) for tok in sub.split())
+
+
+def _display_chip(chip: str) -> str:
+    return " ".join(w.capitalize() for w in chip.split())
+
+
+def _build_variant_key(parsed: dict[str, Any]) -> str | None:
+    """Build a normalized variant group key from parse_item_model output.
+
+    Returns None when the product family is not recognized (caller falls back).
+    """
+    brand = parsed.get("brand")
+    model = parsed.get("model_number")
+    sub = parsed.get("sub_model")
+    storage = _fmt_storage(parsed.get("storage"))
+    size = parsed.get("size")
+    features = parsed.get("features") or []
+
+    if not brand:
+        return None
+
+    if brand == "apple_iphone":
+        if not model:
+            return None
+        model_disp = model.upper() if model.isalpha() else model
+        sub_disp = _display_sub(sub)
+        key = f"iPhone {model_disp}" + (f" {sub_disp}" if sub_disp else "")
+        return f"{key}, {storage}" if storage else key
+
+    if brand in ("rtx", "gtx", "rx"):
+        if not model:
+            return None
+        sub_disp = _display_sub(sub)
+        key = f"{brand.upper()} {model}" + (f" {sub_disp}" if sub_disp else "")
+        return f"{key} {storage}" if storage else key
+
+    if brand == "playstation":
+        if not model:
+            return None
+        sub_disp = _display_sub(sub)
+        key = f"PlayStation {model}" + (f" {sub_disp}" if sub_disp else "")
+        if "digital" in features:
+            key += " Digital"
+        return key
+
+    if brand == "apple_watch":
+        line = {"series": "Series", "ultra": "Ultra", "se": "SE"}.get(sub or "series", "Series")
+        key = f"Apple Watch {line}" + (f" {model}" if model else "")
+        if size:
+            key += f", {size}"
+        return key
+
+    if brand == "apple_airpods":
+        sub_disp = _display_sub(sub)
+        key = "AirPods" + (f" {sub_disp}" if sub_disp else "") + (f" {model}" if model else "")
+        return key.strip()
+
+    if brand == "apple_ipad":
+        parts = ["iPad"]
+        line = {"pro": "Pro", "air": "Air", "mini": "mini"}.get(sub or "")
+        if line:
+            parts.append(line)
+        if size:
+            parts.append(size)
+        if model:
+            parts.append(model.upper() if re.fullmatch(r"m\d", model) else model)
+        key = " ".join(parts)
+        return f"{key}, {storage}" if storage else key
+
+    if brand == "apple_macbook":
+        parts = ["MacBook"]
+        line = {"pro": "Pro", "air": "Air"}.get(sub or "")
+        if line:
+            parts.append(line)
+        if model:
+            parts.append(_display_chip(model))
+        elif size:
+            parts.append(size)
+        key = " ".join(parts)
+        return f"{key}, {storage}" if storage else key
+
+    if brand == "samsung_galaxy":
+        if not model:
+            return None
+        sub_disp = _display_sub(sub)
+        key = f"Samsung Galaxy {model.capitalize()}" + (f" {sub_disp}" if sub_disp else "")
+        return f"{key}, {storage}" if storage else key
+
+    if brand in ("xiaomi", "redmi", "poco"):
+        if not model:
+            return None
+        disp = {"xiaomi": "Xiaomi", "redmi": "Redmi", "poco": "POCO"}[brand]
+        sub_disp = _display_sub(sub)
+        key = f"{disp} {model.capitalize()}" + (f" {sub_disp}" if sub_disp else "")
+        return f"{key}, {storage}" if storage else key
+
+    if brand == "google_pixel":
+        if not model:
+            return None
+        if sub == "a":
+            key = f"Google Pixel {model}a"
+        else:
+            sub_disp = _display_sub(sub)
+            key = f"Google Pixel {model}" + (f" {sub_disp}" if sub_disp else "")
+        return f"{key}, {storage}" if storage else key
+
+    if brand == "xbox":
+        if sub == "360":
+            return "Xbox 360"
+        if sub in ("series", "one"):
+            key = f"Xbox {sub.capitalize()}" + (f" {model.upper()}" if model else "")
+            return key
+        return None
+
+    if brand == "nintendo_switch":
+        sub_disp = _display_sub(sub)
+        return f"Nintendo Switch {sub_disp}".strip()
+
+    if brand == "steam_deck":
+        sub_disp = _display_sub(sub)
+        key = f"Steam Deck {sub_disp}".strip()
+        return f"{key}, {storage}" if storage else key
+
+    if brand == "amd_ryzen":
+        if not model or not sub:
+            return None
+        return f"Ryzen {sub[1:]} {model.upper()}"
+
+    if brand == "intel_core":
+        if not model or not sub:
+            return None
+        return f"Core {sub}-{model.upper()}"
+
+    if brand == "intel_xeon":
+        if not model:
+            return None
+        return f"Xeon {model.upper()}"
+
+    if brand.startswith("ram_ddr"):
+        gen = brand.split("ddr")[-1]
+        parts = [f"DDR{gen}"]
+        if storage:
+            parts.append(storage)
+        if model:
+            parts.append(f"{model}MHz")
+        if len(parts) == 1:
+            return None
+        return " ".join(parts)
+
+    return None
+
+
+def detect_variant(title: str) -> str | None:
+    """Recognized variant key (e.g. 'iPhone 15 Pro, 256GB') or None if family unknown."""
+    try:
+        parsed = parse_item_model(title or "", "")
+        if parsed.get("brand") == "apple_iphone":
+            # Guard against the loose bare-number iPhone pattern ("16 клапанов" etc.):
+            t_low = (title or "").lower()
+            has_kw = bool(re.search(r"(?<!\w)(?:iphone|айфон\w*|i\s*phone)(?!\w)", t_low))
+            if not has_kw and parsed.get("sub_model") in (None, "base"):
+                return None
+        return _build_variant_key(parsed)
+    except Exception:
+        return None
+
+
 def extract_goods_group(title: str) -> str:
-    parsed = parse_item_model(title, "")
-    if parsed.get("brand") == "apple_iphone" and parsed.get("model_number"):
-        sub = f" {parsed['sub_model']}" if parsed.get("sub_model") and parsed["sub_model"] != "base" else ""
-        mem = f", {parsed['storage']}" if parsed.get("storage") else ""
-        return f"iPhone {parsed['model_number']}{sub}{mem}".strip()
-    elif parsed.get("brand") in ("rtx", "gtx", "rx") and parsed.get("model_number"):
-        sub = f" {parsed['sub_model']}" if parsed.get("sub_model") and parsed["sub_model"] != "base" else ""
-        return f"{parsed['brand'].upper()} {parsed['model_number']}{sub}".strip()
-    elif parsed.get("brand") == "playstation" and parsed.get("model_number"):
-        sub = f" {parsed['sub_model']}" if parsed.get("sub_model") and parsed["sub_model"] != "base" else ""
-        return f"PlayStation {parsed['model_number']}{sub}".strip()
+    key = detect_variant(title)
+    if key:
+        return key
 
     parts = [p.strip() for p in title.split(",") if p.strip()]
     if not parts:
@@ -543,6 +950,9 @@ def classify_item(item: ParsedItem, category_type: str = "goods", search_query: 
     seller_label_low = item.seller_type.lower()
     full_text = f"{item.title} {item.description}".lower()
     title_low = item.title.lower()
+
+    if category_type != "realty" and getattr(item, "variant", None) is None:
+        item.variant = detect_variant(item.title)
 
     if category_type == "realty":
         # Check agency vs owner
@@ -609,8 +1019,15 @@ def classify_item(item: ParsedItem, category_type: str = "goods", search_query: 
             else:
                 item.tags.append("🔄 Обмен / Не продажа")
 
-        if PARTS_AND_ACCESSORIES_RE.search(item.title.lower()) and not is_acc:
-            item.tags.append("🔧 Запчасти / Комплектующие")
+        if not is_acc:
+            # Не помечать мусором, если пользователь сам ищет эту запчасть (DDR5, SSD, блок питания)
+            q_low = (search_query or "").lower()
+            parts_matches = [m.group(0) for m in PARTS_AND_ACCESSORIES_RE.finditer(title_low)]
+            mentioned_in_query = any(
+                len(mm) >= 3 and mm[:4] in q_low for mm in parts_matches
+            ) if q_low else False
+            if parts_matches and not mentioned_in_query:
+                item.tags.append("🔧 Запчасти / Комплектующие")
 
         if PC_BUILD_RE.search(item.title.lower()):
             item.tags.append("🖥 ПК в сборе")

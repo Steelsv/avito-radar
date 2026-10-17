@@ -8,13 +8,55 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
 
 from avito_radar.parsers.item_parser import ParsedItem
 
 OUTLIER_LOW_FACTOR = 0.5
 OUTLIER_HIGH_FACTOR = 1.8
 MIN_ITEMS_FOR_STATS = 3
+
+RECOMMENDED_BUY_FACTOR = 0.88
+DEAL_BADGE_THRESHOLD_PCT = -10.0
+
+
+def format_money(value: int) -> str:
+    """Форматирование суммы с пробелом-разделителем тысяч."""
+    return f"{value:,}".replace(",", " ")
+
+
+def compute_deal_fields(median: int, price: int | None) -> dict[str, Any]:
+    """Profit analytics for a lot against its market median."""
+    fields: dict[str, Any] = {
+        "market_median": int(median),
+        "recommended_buy": max(0, round(median * RECOMMENDED_BUY_FACTOR / 100) * 100),
+        "profit_abs": None,
+        "profit_pct": None,
+        "deal_badge": None,
+    }
+    if not price or price <= 0 or median <= 0:
+        return fields
+    profit_abs = int(median - price)
+    profit_pct = round((median - price) / median * 100, 1)
+    fields["profit_abs"] = profit_abs
+    fields["profit_pct"] = profit_pct
+    if profit_pct >= abs(DEAL_BADGE_THRESHOLD_PCT):
+        fields["deal_badge"] = f"Ниже рынка на {format_money(profit_abs)} руб. (-{profit_pct:g}%)"
+    return fields
+
+
+def apply_deal_fields(item: Any, median: int, price: int | None) -> None:
+    for key, value in compute_deal_fields(median, price).items():
+        setattr(item, key, value)
+
+
+def clear_deal_fields(item: Any) -> None:
+    item.market_median = None
+    item.recommended_buy = None
+    item.profit_abs = None
+    item.profit_pct = None
+    item.deal_badge = None
+    item.market_min_price = None
 
 
 @dataclass(frozen=True)
@@ -126,6 +168,12 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
         stats_map["_overall"] = overall_stats
 
     for item in items:
+        if getattr(item, "variant", None) is None:
+            from avito_radar.analysis.classifier import detect_variant
+            item.variant = detect_variant(item.title)
+
+        clear_deal_fields(item)
+
         if getattr(item, "is_mismatched_model", False):
             item.market_price = None
             item.market_diff_percent = None
@@ -141,11 +189,16 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
         if not stats:
             continue
 
+        item.market_samples = stats.count
+        item.market_min_price = stats.min_price if stats.min_price > 0 else None
+
         # If defective (e.g. iCloud lock):
         # Keep market_price for reference of working item cost, but never calculate false deal diff
         if getattr(item, "is_defect", False):
             item.market_price = stats.median_price
             item.market_diff_percent = None
+            item.market_median = int(stats.median_price)
+            item.recommended_buy = max(0, round(stats.median_price * RECOMMENDED_BUY_FACTOR / 100) * 100)
             continue
 
         # If combo listing:
@@ -156,6 +209,7 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
             if real_p and real_p >= 1000:
                 diff = (real_p - stats.median_price) / stats.median_price * 100
                 item.market_diff_percent = round(diff, 1)
+                apply_deal_fields(item, stats.median_price, real_p)
                 if diff <= -15 and not getattr(item, "is_accessory", False):
                     item.tags.append(f"🔥 Выгодно ({item.market_diff_percent}%)")
                 elif diff >= 25:
@@ -163,6 +217,7 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
             else:
                 # Bait price with unknown model price: do not calculate false diff!
                 item.market_diff_percent = None
+                item.market_median = int(stats.median_price)
             continue
 
         # Normal working standalone item
@@ -170,6 +225,7 @@ def annotate_market_prices(items: list[ParsedItem], group_key_fn: Any = None) ->
             item.market_price = stats.median_price
             diff = (item.price - stats.median_price) / stats.median_price * 100
             item.market_diff_percent = round(diff, 1)
+            apply_deal_fields(item, stats.median_price, item.price)
 
             # Do not tag accessory listings as deals
             if not getattr(item, "is_accessory", False):

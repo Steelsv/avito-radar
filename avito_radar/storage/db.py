@@ -238,6 +238,15 @@ def load_listings(search: SearchRecord) -> dict[str, dict[str, Any]]:
 
 
 def save_listings(search: SearchRecord, listings: dict[str, dict[str, Any]]) -> None:
+    # Обогатить кэш лотов распознанным вариантом комплектации (только товары)
+    if getattr(search, "category_type", "") == "goods":
+        try:
+            from avito_radar.analysis.classifier import detect_variant
+            for raw in listings.values():
+                if isinstance(raw, dict) and "variant" not in raw:
+                    raw["variant"] = detect_variant(str(raw.get("title") or ""))
+        except Exception:
+            pass
     save_json(search.file_path("listings.json"), listings)
 
 

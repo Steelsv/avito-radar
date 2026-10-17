@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import random
 import time
 from datetime import datetime
@@ -10,12 +11,14 @@ from typing import Any, Callable
 
 from avito_radar.analysis.classifier import classify_item, extract_goods_group
 from avito_radar.analysis.market import annotate_market_prices
+from avito_radar.analysis.market_db import update_market_db
 from avito_radar.config import AppSettings, load_settings
 from avito_radar.core.client import AvitoClient
 from avito_radar.exporters.excel import export_to_excel
 from avito_radar.notifications.telegram import TelegramNotifier, load_telegram_config
 from avito_radar.parsers.item_parser import ParsedItem, inspect_item_views, parse_catalog_item
 from avito_radar.parsers.url_resolver import SearchConfig, resolve_url
+from avito_radar.storage import dedup, price_history
 from avito_radar.storage.db import (
     SearchRecord,
     append_alert,
@@ -32,6 +35,8 @@ from avito_radar.storage.db import (
 )
 
 SORT_BY_DATE_PARAM = {"s": "104"}
+
+logger = logging.getLogger(__name__)
 
 
 def create_search_from_url(
@@ -150,11 +155,24 @@ def scan_search(
         classify_item(parsed, category_type=search.category_type, search_query=q_str)
         parsed_items.append(parsed)
 
+    # Price history hook: every scan records every seen lot's current price
+    for p_item in parsed_items:
+        try:
+            price_history.record_price(p_item.id, p_item.price)
+        except Exception as exc:
+            logger.debug("price_history record failed for %s: %s", p_item.id, exc)
+
     # Market stats
     annotate_market_prices(
         parsed_items,
         group_key_fn=lambda x: extract_goods_group(x.title) if search.category_type == "goods" else "all",
     )
+
+    # Feed the global variant market DB with this scan's valid listings
+    try:
+        update_market_db(parsed_items, search.category_type)
+    except Exception as exc:
+        logger.warning("market_db update failed for %s: %s", search.name, exc)
 
     # Export to Excel
     excel_path = export_to_excel(search.name, parsed_items)
@@ -220,6 +238,10 @@ def watch_searches(
 
                         for raw in page.items:
                             item_id_str = str(raw["id"])
+                            try:
+                                price_history.record_price(item_id_str, parse_catalog_item(raw).price)
+                            except Exception:
+                                pass
                             if item_id_str in seen:
                                 continue
 
@@ -257,6 +279,10 @@ def watch_searches(
                                 if is_repub:
                                     emit("REPUBLISHED_IGNORED", {"item": parsed.title, "views": total_v})
                                     continue
+
+                            # Photo-repost dedup: same images under a new id do not re-alert
+                            if dedup.check_and_mark_post(s, parsed):
+                                continue
 
                             # Append alert
                             append_alert(s, parsed)

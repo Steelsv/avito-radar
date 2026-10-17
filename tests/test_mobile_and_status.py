@@ -91,14 +91,14 @@ def test_styles_and_scripts_have_swipes_and_skeletons():
     css_content = (root_dir / "css" / "styles.css").read_text(encoding="utf-8")
     app_js_content = (root_dir / "js" / "app.js").read_text(encoding="utf-8")
 
-    assert ".skeleton-card" in css_content
-    assert "skeletonShimmer" in css_content
+    assert ".skeleton" in css_content
+    assert "skeletonPulse" in css_content
     assert ".vanished-swipe" in css_content
     assert ".rotating" in css_content
 
     assert "attachSwipeToCard" in app_js_content
-    assert "renderSkeletonCards" in app_js_content
-    assert "selectionChanged" in app_js_content
+    assert "renderFeedSkeletons" in app_js_content
+    assert "haptic('selection')" in app_js_content
     assert "vanishLot" in app_js_content
 
 

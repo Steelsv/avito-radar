@@ -53,6 +53,20 @@ TG_EMOJI_ANALYTICS = "5935913431801532272"  # 📈
 TG_EMOJI_HOURGLASS = "5891211339170326418"  # ⌛️
 TG_EMOJI_CROSS = "5774077015388852135"      # ❌
 TG_EMOJI_TAG = "5886285355279193209"        # 🏷
+TG_EMOJI_TARGET = "6032949275732742941"     # 🎯
+TG_EMOJI_TIMER = "6037268453759389862"      # ⏲️
+TG_EMOJI_BROADCAST = "6048723247501938454"  # 🛜
+TG_EMOJI_KEYBOARD = "6039404727542747508"   # ⌨
+TG_EMOJI_PHONE = "6039605143601680423"      # 📞
+TG_EMOJI_GAMEPAD = "5938413566624272793"    # 🎮
+TG_EMOJI_COG = "5850309953293653168"        # ⚙️
+TG_EMOJI_NAV = "5904650558127478452"        # 🗺
+TG_EMOJI_SPARKLE = "5890925363067886150"    # ✨
+TG_EMOJI_INFO = "6028435952299413210"       # ℹ
+TG_EMOJI_LOCK = "5778570255555105942"       # 🔒
+TG_EMOJI_DOC = "6050643982646513651"        # 📄
+TG_EMOJI_CROWN = "5805553606635559688"      # 👑
+
 
 def tg_e(emoji_id: str, fallback: str) -> str:
     """Format custom Telegram emoji tag."""
@@ -118,6 +132,15 @@ def auto_detect_chat_id(token: str) -> tuple[int, str]:
     raise RuntimeError("Бот ещё не получил ни одного сообщения. Отправьте ему /start в Telegram и повторите.")
 
 
+def _display_variant(variant: str) -> str:
+    """Human-friendly variant notation: '256GB' → '256 ГБ', '6000MHz' → '6000 МГц'."""
+    return (
+        variant.replace("GB", " ГБ")
+        .replace("TB", " ТБ")
+        .replace("MHz", " МГц")
+    )
+
+
 def format_ad_message(search_title: str, item: ParsedItem) -> str:
     e_growth = tg_e(TG_EMOJI_GROWTH, "📈")
     e_coin = tg_e(TG_EMOJI_COIN, "🪙")
@@ -127,6 +150,10 @@ def format_ad_message(search_title: str, item: ParsedItem) -> str:
     e_star = tg_e(TG_EMOJI_STAR, "⭐️")
     e_radar = tg_e(TG_EMOJI_RADAR, "👁")
     e_lightning = tg_e(TG_EMOJI_LIGHTNING, "⚡")
+    e_box = tg_e(TG_EMOJI_BOX, "📦")
+    e_lock = tg_e(TG_EMOJI_LOCK, "🔒")
+    e_list = tg_e(TG_EMOJI_LIST, "🗂")
+    e_repeat = tg_e(TG_EMOJI_REPEAT, "🔁")
 
     is_top_deal = (
         item.market_diff_percent is not None
@@ -137,56 +164,81 @@ def format_ad_message(search_title: str, item: ParsedItem) -> str:
         and not getattr(item, "is_accessory", False)
     )
 
+    special_header = (
+        getattr(item, "is_defect", False)
+        or getattr(item, "is_exchange_or_wtb", False)
+        or getattr(item, "is_in_desc_or_list", False)
+        or getattr(item, "is_combo_listing", False)
+        or is_top_deal
+    )
+
     if getattr(item, "is_defect", False):
         if getattr(item, "defect_type", "") == "icloud":
-            header = "🔒 <b>ВНИМАНИЕ: ICLOUD ЗАБЛОКИРОВАН / MDM</b>"
+            header = f"{e_lock} <b>ВНИМАНИЕ: ICLOUD ЗАБЛОКИРОВАН / MDM</b>"
         elif getattr(item, "defect_type", "") == "dead":
-            header = "⚡ <b>НА ЗАПЧАСТИ / НЕ ВКЛЮЧАЕТСЯ</b>"
+            header = f"{e_warn} <b>НА ЗАПЧАСТИ / НЕ ВКЛЮЧАЕТСЯ</b>"
         else:
             header = f"{e_warn} <b>ЛОТ С ДЕФЕКТОМ / НЕИСПРАВНОСТЬЮ</b>"
     elif getattr(item, "is_exchange_or_wtb", False):
-        header = "🔄 <b>ОБМЕН / НЕ ПРЯМАЯ ПРОДАЖА</b>"
+        header = f"{e_repeat} <b>ОБМЕН / НЕ ПРЯМАЯ ПРОДАЖА</b>"
     elif getattr(item, "is_in_desc_or_list", False) or getattr(item, "is_combo_listing", False):
-        header = "📋 <b>ТОВАР В СПИСКЕ / В ОПИСАНИИ</b>"
+        header = f"{e_list} <b>ТОВАР В СПИСКЕ / В ОПИСАНИИ</b>"
     elif is_top_deal:
         header = f"{e_growth} <b>НАЙДЕН ВЫГОДНЫЙ ЛОТ ({item.market_diff_percent}%)</b>"
     else:
         header = f"{e_radar} <b>{html.escape(item.title)}</b>"
 
-    lines = [
-        header,
-        f"<b>{html.escape(item.title)}</b>" if (is_top_deal or getattr(item, "is_defect", False) or getattr(item, "is_exchange_or_wtb", False) or getattr(item, "is_in_desc_or_list", False)) else "",
-    ]
+    # --- Header block: status/title + variant ---
+    head_lines = [header]
+    if special_header:
+        head_lines.append(f"<b>{html.escape(item.title)}</b>")
+    variant = getattr(item, "variant", None)
+    variant_disp = _display_variant(variant) if variant else None
+    if variant_disp:
+        head_lines.append(f"{e_box} <b>{html.escape(variant_disp)}</b>")
 
+    # --- Price block ---
+    price_lines: list[str] = []
     if getattr(item, "is_in_desc_or_list", False) and item.real_price_in_desc:
         real_str = f"{item.real_price_in_desc:,} ₽".replace(",", " ")
-        lines.append(f"{e_coin} <b>В описании целевой товар: ~{real_str}</b> <i>(в заголовке от {html.escape(item.price_formatted)})</i>")
+        price_lines.append(
+            f"{e_coin} <b>В описании целевой товар: ~{real_str}</b> "
+            f"<i>(в заголовке от {html.escape(item.price_formatted)})</i>"
+        )
     elif getattr(item, "is_exchange_or_wtb", False):
-        lines.append(f"{e_coin} <b>{html.escape(item.price_formatted)} (обмен / не продажа)</b>")
+        price_lines.append(f"{e_coin} <b>{html.escape(item.price_formatted)}</b> <i>(обмен / не продажа)</i>")
     else:
-        lines.append(f"{e_coin} <b>{html.escape(item.price_formatted)}</b>")
+        price_lines.append(f"{e_coin} <b>{html.escape(item.price_formatted)}</b>")
 
-    lines = [l for l in lines if l]
-
+    # --- Market block ---
+    market_lines: list[str] = []
     if item.market_price:
         market_str = f"{item.market_price:,} ₽".replace(",", " ")
         if getattr(item, "is_defect", False):
-            lines.append(f"<i>Оценка рынка для исправных устройств ~{market_str}</i>")
+            market_lines.append(f"<i>Оценка рынка для исправных устройств: ~{market_str}</i>")
         elif getattr(item, "is_exchange_or_wtb", False):
             pass
-        elif getattr(item, "is_combo_listing", False):
-            if item.real_price_in_desc and item.market_diff_percent is not None:
-                diff_abs = abs(round(item.market_diff_percent, 1))
-                diff_word = "Ниже" if item.market_diff_percent < 0 else "Выше"
-                lines.append(f"<i>Рыночная цена ~{market_str} ({diff_word} рынка на {diff_abs}%)</i>")
-            else:
-                lines.append(f"{e_warn} <i>Внимание: в объявлении сборный список цен (рынок ~{market_str})</i>")
-        elif (item.market_diff_percent or 0) < 0:
-            diff_abs = abs(round(item.market_diff_percent or 0, 1))
-            lines.append(f"{e_growth} <i>Ниже рынка на {diff_abs}% (оценка рынка ~{market_str})</i>")
         else:
-            lines.append(f"<i>Рыночная цена ~{market_str} ({item.market_diff_percent:+.1f}%)</i>")
+            samples = getattr(item, "market_samples", None)
+            count_part = f" · по {samples} объявл." if samples else ""
+            src_part = " · глоб. база" if getattr(item, "market_is_global", False) else ""
+            label = f"Рынок ({variant_disp})" if variant_disp else "Рынок"
+            market_lines.append(f"{e_growth} {label}: ~{market_str}{count_part}{src_part}")
 
+            diff = item.market_diff_percent
+            if getattr(item, "is_combo_listing", False) and not (item.real_price_in_desc and diff is not None):
+                market_lines.append(f"{e_warn} <i>В объявлении сборный список цен</i>")
+            elif diff is not None:
+                diff_abs = abs(round(diff, 1))
+                if diff < 0:
+                    market_lines.append(f"<i>ниже рынка на {diff_abs}%</i>")
+                elif diff > 0:
+                    market_lines.append(f"<i>выше рынка на {diff_abs}%</i>")
+                else:
+                    market_lines.append("<i>на уровне рынка</i>")
+
+    # --- Location & seller block ---
+    info_lines: list[str] = []
     loc_parts = []
     if item.city:
         loc_parts.append(item.city)
@@ -195,23 +247,28 @@ def format_ad_message(search_title: str, item: ParsedItem) -> str:
     elif item.address:
         loc_parts.append(item.address)
     if loc_parts:
-        lines.append(f"{e_pin} {html.escape(' · '.join(loc_parts))}")
+        info_lines.append(f"{e_pin} {html.escape(' · '.join(loc_parts))}")
 
-    # Seller
     seller_name = html.escape(item.seller_name or item.seller_type or "Частное лицо")
-    rating_part = f" ({e_star} {item.seller_rating})" if item.seller_rating else ""
-    deals_part = f", {item.closed_listings} сделок" if item.closed_listings is not None else ""
-    lines.append(f"{e_user} {seller_name}{rating_part}{deals_part}")
+    rating_part = f" · {e_star} {item.seller_rating}" if item.seller_rating else ""
+    deals_part = f" · {item.closed_listings} сделок" if item.closed_listings is not None else ""
+    info_lines.append(f"{e_user} {seller_name}{rating_part}{deals_part}")
 
     if item.tags:
         clean_tags = [t for t in item.tags if not t.startswith("🔥 Выгодно") and not t.startswith("Выгодно")]
         if clean_tags:
-            lines.append("· " + " · ".join(html.escape(t) for t in clean_tags[:3]))
+            info_lines.append("· " + " · ".join(html.escape(t) for t in clean_tags[:3]))
 
-    lines.append(f"\n{e_lightning} <i>Откройте терминал для полной аналитики и сравнения лотов</i>")
-    lines.append(f"<i>Поиск: #{html.escape(search_title.replace(' ', '_'))}</i>")
+    blocks = ["\n".join(head_lines), "\n".join(price_lines)]
+    if market_lines:
+        blocks.append("\n".join(market_lines))
+    blocks.append("\n".join(info_lines))
+    blocks.append(
+        f"{e_lightning} <i>Терминал — полная аналитика лота</i>\n"
+        f"<i>Радар: #{html.escape(search_title.replace(' ', '_'))}</i>"
+    )
 
-    return "\n".join(lines)
+    return "\n\n".join(blocks)
 
 
 class TelegramNotifier:

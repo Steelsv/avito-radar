@@ -1,4 +1,4 @@
-# 🛰️ AvitoRadar — Telegram Mini App & Automated Deals Watchdog
+# 🛰️ AvitoRadar - Telegram Mini App & Automated Deals Watchdog
 
 Премиальный инструмент для мониторинга выгодных предложений на Авито с автоотслеживанием 24/7, встроенной аналитикой рынка и интеграцией с Telegram Bot API.
 
@@ -55,8 +55,8 @@ avitoradar/
 ## 🛠️ API Reference
 
 ### 1. Поисковые запросы (Searches)
-* `GET /api/searches` — получить список активных радаров.
-* `POST /api/searches` — создать новый радар:
+* `GET /api/searches` - получить список активных радаров.
+* `POST /api/searches` - создать новый радар:
   ```json
   {
     "query": "RX 6700 XT",
@@ -69,27 +69,42 @@ avitoradar/
     }
   }
   ```
-* `DELETE /api/searches/:id` — удалить радар из базы и остановить мониторинг.
-* `POST /api/searches/:id/scan` — запустить немедленное сканирование Авито.
+* `DELETE /api/searches/:id` - удалить радар из базы и остановить мониторинг.
+* `POST /api/searches/:id/scan` - запустить немедленное сканирование Авито.
 
 ### 2. Объявления (Lots)
-* `GET /api/lots` — получить список объявлений с фильтрами:
-  * `searchId` — ID радара (или `all`)
-  * `onlyProfit=true` — только выгодные предложения (ниже рынка)
-  * `privateSellers=true` — только частные продавцы
-  * `withDelivery=true` — с Авито Доставкой
-  * `noDefects=true` — без дефектов и запчастей
-  * `includeDismissed=true` — показать скрытые объявления (Vanish)
-  * `q` — поиск по ключевым словам
-  * `sort` — `deal` (по выгоде), `cheap` (дешевле), `expensive` (дороже), `date` (новые)
-* `POST /api/lots/:id/dismiss` — скрыть объявление (Vanish).
-* `POST /api/lots/:id/restore` — восстановить скрытое объявление.
+* `GET /api/lots` - получить список объявлений с фильтрами:
+  * `searchId` - ID радара (или `all`)
+  * `onlyProfit=true` - только выгодные предложения (ниже рынка)
+  * `privateSellers=true` - только частные продавцы
+  * `withDelivery=true` - с Авито Доставкой
+  * `noDefects=true` - без дефектов и запчастей
+  * `includeDismissed=true` - показать скрытые объявления (Vanish)
+  * `q` - поиск по ключевым словам
+  * `sort` - `deal` (по выгоде), `cheap` (дешевле), `expensive` (дороже), `date` (новые)
+* `POST /api/lots/:id/dismiss` - скрыть объявление (Vanish).
+* `POST /api/lots/:id/restore` - восстановить скрытое объявление.
 
 ### 3. Мониторинг и Health Check
-* `GET /health` — проверка работоспособности сервера:
+* `GET /health` - проверка работоспособности сервера:
   ```json
   { "status": "ok", "service": "avitoradar-backend", "timestamp": 1728867200000 }
   ```
+
+---
+
+## 💎 Тарифы и монетизация (Freemium + PRO)
+
+FREE: 1 радар, 3 анализа рынка в сутки, уведомления о новых лотах с задержкой 15 минут.
+PRO Sniper: 15 радаров, безлимитная аналитика рынка, мгновенные уведомления.
+
+Оплата:
+- Telegram Stars: 30 дней - 299 Stars, 12 месяцев - 1999 Stars (инвойсы через Bot API, XTR).
+- ЮKassa (карта/СБП): задайте `YOOKASSA_SHOP_ID` и `YOOKASSA_SECRET` в env; вебхук `/webhook/yookassa` выдает PRO после подтверждения платежа. Без ключей фронт скрывает кнопку.
+- Пробный PRO на 24 часа - один раз на аккаунт (кнопка в меню или `POST /api/trial`).
+- Рефералка: за каждого приглашенного по ссылке `https://t.me/<bot>?start=ref_<id>` - +3 дня PRO.
+
+API монетизации: `GET /api/user`, `POST /api/pay/stars`, `POST /api/pay/yookassa`, `POST /api/trial`, `POST /api/analysis`, `POST /webhook/yookassa`. В `GET /api/bundle` добавлен блок `user` с тарифом, лимитами и ценами. Команда бота `/pro` - экран тарифов. Супер-владелец `TELEGRAM_CHAT_ID` всегда PRO.
 
 ---
 
@@ -104,10 +119,10 @@ avitoradar/
    * **`avitoradar-backend`** (Web Service, Node.js)
    * **`avitoradar-frontend`** (Static Site)
 5. В разделе Environment Variables укажите:
-   * `TELEGRAM_BOT_TOKEN` — токен вашего Telegram-бота (от `@BotFather`)
-   * `TELEGRAM_CHAT_ID` — ваш ID чата в Telegram (куда отправлять алерты)
-   * `MINI_APP_URL` — ссылка на фронтенд (например: `https://steelsv.github.io/avito-radar/` или URL на Render)
-6. Нажмите **Apply** — проект автоматически соберется и запустится!
+   * `TELEGRAM_BOT_TOKEN` - токен вашего Telegram-бота (от `@BotFather`)
+   * `TELEGRAM_CHAT_ID` - ваш ID чата в Telegram (куда отправлять алерты)
+   * `MINI_APP_URL` - ссылка на фронтенд (например: `https://steelsv.github.io/avito-radar/` или URL на Render)
+6. Нажмите **Apply** - проект автоматически соберется и запустится!
 
 ---
 

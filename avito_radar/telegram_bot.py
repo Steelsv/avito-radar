@@ -6,12 +6,17 @@ and receive Excel spreadsheets directly through Telegram buttons and commands.
 
 from __future__ import annotations
 
+import csv
+import hashlib
+import hmac
 import html
 import http.server
+import io
 import json
 import logging
 import os
 import re
+import secrets
 import threading
 import time
 import urllib.parse
@@ -21,33 +26,52 @@ from typing import Any
 
 import requests
 
+from avito_radar import billing
 from avito_radar.analysis.classifier import classify_item, extract_goods_group, is_likely_fake_or_junk
-from avito_radar.analysis.market import annotate_market_prices
+from avito_radar.analysis.market import annotate_market_prices, format_money
+from avito_radar.analysis.market_db import apply_global_market, get_variant_stats, update_market_db
+from avito_radar.analysis.seller_score import score_seller
 from avito_radar.config import AppSettings, load_settings, save_settings
 from avito_radar.core.client import AvitoClient
+from avito_radar.core.geocoding import format_distance, geocode_address, lot_distance_km
 from avito_radar.engine import create_search_from_url, scan_search
 from avito_radar.exporters.excel import export_to_excel
 from avito_radar.notifications.telegram import (
     TG_EMOJI_ANALYTICS,
     TG_EMOJI_BACK,
+    TG_EMOJI_BROADCAST,
     TG_EMOJI_CHART,
     TG_EMOJI_CHECK,
     TG_EMOJI_CLOCK,
+    TG_EMOJI_COG,
     TG_EMOJI_CROSS,
+    TG_EMOJI_CROWN,
+    TG_EMOJI_DOC,
     TG_EMOJI_EYE_OFF,
+    TG_EMOJI_GAMEPAD,
     TG_EMOJI_GEAR,
     TG_EMOJI_GLOBE,
     TG_EMOJI_HOURGLASS,
+    TG_EMOJI_KEYBOARD,
     TG_EMOJI_LIGHTNING,
     TG_EMOJI_LINK,
     TG_EMOJI_LIST,
+    TG_EMOJI_NAV,
+    TG_EMOJI_PENCIL,
+    TG_EMOJI_PHONE,
     TG_EMOJI_PIN,
     TG_EMOJI_PLUS,
     TG_EMOJI_PRICE_TAG,
     TG_EMOJI_PROFILE,
+    TG_EMOJI_RADAR,
+    TG_EMOJI_REPEAT,
     TG_EMOJI_SEARCH,
     TG_EMOJI_SHIELD,
+    TG_EMOJI_SPARKLE,
+    TG_EMOJI_STAR,
     TG_EMOJI_TAG,
+    TG_EMOJI_TARGET,
+    TG_EMOJI_TIMER,
     TG_EMOJI_TRASH,
     TG_EMOJI_WARN,
     TelegramConfig,
@@ -72,10 +96,349 @@ from avito_radar.storage.db import (
     save_search,
     save_seen,
 )
+from avito_radar.storage import dedup, price_history, users as users_store
 
 logger = logging.getLogger(__name__)
 
 _LOCK_FILE_HANDLE = None
+
+PENDING_ALERTS_DIR = DATA_DIR / "pending_alerts"
+FREE_ALERT_DELAY_SEC = users_store.PLANS_LIMITS["free"]["notify_delay_min"] * 60
+
+_BOT_USERNAME_CACHE: dict[str, str] = {}
+
+
+def verify_init_data(init_data: str, bot_token: str) -> str | None:
+    """Проверка HMAC подписи Telegram WebApp initData. Возвращает user_id или None."""
+    if not init_data or not bot_token:
+        return None
+    try:
+        pairs = urllib.parse.parse_qsl(init_data, keep_blank_values=True)
+    except Exception:
+        return None
+    data = dict(pairs)
+    recv_hash = data.pop("hash", "")
+    if not recv_hash:
+        return None
+    data_check = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+    calc_hash = hmac.new(secret_key, data_check.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(calc_hash, recv_hash):
+        return None
+    try:
+        user_obj = json.loads(data.get("user", "{}"))
+        return str(user_obj.get("id") or "").strip() or None
+    except Exception:
+        return None
+
+
+def get_bot_username(bot_token: str | None = None) -> str:
+    token = (bot_token or os.environ.get("TELEGRAM_BOT_TOKEN", "")).strip()
+    if not token:
+        return ""
+    if token in _BOT_USERNAME_CACHE:
+        return _BOT_USERNAME_CACHE[token]
+    try:
+        resp = requests.post(f"https://api.telegram.org/bot{token}/getMe", timeout=15)
+        data = resp.json()
+        if data.get("ok"):
+            username = str(data["result"].get("username") or "")
+            _BOT_USERNAME_CACHE[token] = username
+            return username
+    except Exception as exc:
+        logger.debug("getMe failed: %s", exc)
+    _BOT_USERNAME_CACHE[token] = ""
+    return ""
+
+
+def build_referral_url(user_id: str | int) -> str:
+    username = get_bot_username()
+    if username:
+        return f"https://t.me/{username}?start=ref_{user_id}"
+    return f"https://t.me/?start=ref_{user_id}"
+
+
+def build_user_block(user_id: str | int) -> dict[str, Any]:
+    profile = users_store.public_profile(user_id)
+    profile["referral_url"] = build_referral_url(user_id)
+    profile["stars_price_month"] = billing.PLANS["pro_month"]["stars"]
+    profile["stars_price_year"] = billing.PLANS["pro_year"]["stars"]
+    return profile
+
+
+def analyze_market_for(query: str = "", search_name: str = "", user_id: str | int | None = None) -> dict[str, Any] | None:
+    """Оценка рынка по имени радара или запросу: медиана, выкуп, лучшие лоты."""
+    s_rec = None
+    if search_name:
+        s_rec = load_search(search_name)
+    if not s_rec and query:
+        for s in list_searches(user_id=user_id):
+            if s.title.strip().lower() == query.strip().lower():
+                s_rec = s
+                break
+    if not s_rec:
+        return None
+    raws = load_listings(s_rec)
+    if not raws:
+        return None
+    items = [parse_catalog_item(r) for r in raws.values()]
+    for it in items:
+        classify_item(it, category_type=s_rec.category_type, search_query=s_rec.title)
+    items = [it for it in items if not getattr(it, "is_mismatched_model", False)]
+    annotate_market_prices(items)
+    valid = [it for it in items if getattr(it, "market_median", None)]
+    if not valid:
+        return None
+    median = int(round(sum(it.market_median for it in valid) / len(valid)))
+    best = sorted(
+        [it for it in valid if getattr(it, "profit_pct", None) is not None],
+        key=lambda it: it.profit_pct,
+    )[:5]
+    return {
+        "search_name": s_rec.name,
+        "title": s_rec.title,
+        "count": len(valid),
+        "market_median": median,
+        "recommended_buy": max(0, round(median * 0.88 / 100) * 100),
+        "best_deals": [
+            {
+                "id": str(it.id),
+                "title": it.title,
+                "price": it.price,
+                "url": it.url,
+                "market_median": it.market_median,
+                "profit_abs": it.profit_abs,
+                "profit_pct": it.profit_pct,
+                "deal_badge": it.deal_badge,
+            }
+            for it in best
+        ],
+    }
+
+
+def queue_pending_alert(user_id: str | int, item: dict[str, Any]) -> None:
+    """Отложенное уведомление для free-юзера: jsonl-очередь + метка времени."""
+    PENDING_ALERTS_DIR.mkdir(parents=True, exist_ok=True)
+    uid = str(user_id)
+    path = PENDING_ALERTS_DIR / f"{uid}.jsonl"
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(item, ensure_ascii=False) + "\n")
+    meta_path = PENDING_ALERTS_DIR / f"{uid}.meta.json"
+    if not meta_path.exists():
+        meta_path.write_text(json.dumps({"last_flush": time.time()}), encoding="utf-8")
+
+
+def load_pending_alerts(uid: str) -> list[dict[str, Any]]:
+    path = PENDING_ALERTS_DIR / f"{uid}.jsonl"
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except Exception:
+            continue
+    return out
+
+
+def clear_pending_alerts(uid: str) -> None:
+    path = PENDING_ALERTS_DIR / f"{uid}.jsonl"
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        pass
+
+
+def read_flush_meta(uid: str) -> dict[str, Any]:
+    meta_path = PENDING_ALERTS_DIR / f"{uid}.meta.json"
+    if not meta_path.exists():
+        return {}
+    try:
+        return json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def write_flush_meta(uid: str, last_flush: float) -> None:
+    PENDING_ALERTS_DIR.mkdir(parents=True, exist_ok=True)
+    (PENDING_ALERTS_DIR / f"{uid}.meta.json").write_text(
+        json.dumps({"last_flush": last_flush}), encoding="utf-8"
+    )
+
+
+def item_to_pending_dict(item: Any, search_title: str) -> dict[str, Any]:
+    return {
+        "search_title": search_title,
+        "id": item.id,
+        "title": item.title,
+        "price": item.price,
+        "price_formatted": item.price_formatted,
+        "url": item.url,
+        "address": item.address,
+        "metro": item.metro,
+        "city": item.city,
+        "published_text": item.published_text,
+        "seller_name": item.seller_name,
+        "seller_type": item.seller_type,
+        "seller_rating": item.seller_rating,
+        "closed_listings": item.closed_listings,
+        "badges": list(item.badges),
+        "images": list(item.images[:4]),
+        "description": item.description,
+        "tags": list(item.tags),
+        "market_price": item.market_price,
+        "market_diff_percent": item.market_diff_percent,
+        "market_median": getattr(item, "market_median", None),
+        "recommended_buy": getattr(item, "recommended_buy", None),
+        "profit_abs": getattr(item, "profit_abs", None),
+        "profit_pct": getattr(item, "profit_pct", None),
+        "deal_badge": getattr(item, "deal_badge", None),
+        "geo_lat": getattr(item, "geo_lat", None),
+        "geo_lon": getattr(item, "geo_lon", None),
+        "market_samples": getattr(item, "market_samples", None),
+        "market_min_price": getattr(item, "market_min_price", None),
+    }
+
+
+def pending_dict_to_item(d: dict[str, Any]) -> ParsedItem:
+    it = ParsedItem(
+        id=int(d.get("id") or 0),
+        title=str(d.get("title") or ""),
+        price=d.get("price"),
+        price_formatted=str(d.get("price_formatted") or ""),
+        url=str(d.get("url") or ""),
+        address=str(d.get("address") or ""),
+        metro=str(d.get("metro") or ""),
+        city=str(d.get("city") or ""),
+        published_text=str(d.get("published_text") or ""),
+        sort_timestamp=None,
+        seller_name=str(d.get("seller_name") or ""),
+        seller_type=str(d.get("seller_type") or ""),
+        seller_rating=d.get("seller_rating"),
+        closed_listings=d.get("closed_listings"),
+        badges=tuple(d.get("badges") or ()),
+        images=list(d.get("images") or []),
+        description=str(d.get("description") or ""),
+        phone_available=True,
+    )
+    it.market_price = d.get("market_price")
+    it.market_diff_percent = d.get("market_diff_percent")
+    it.market_median = d.get("market_median")
+    it.recommended_buy = d.get("recommended_buy")
+    it.profit_abs = d.get("profit_abs")
+    it.profit_pct = d.get("profit_pct")
+    it.deal_badge = d.get("deal_badge")
+    it.geo_lat = d.get("geo_lat")
+    it.geo_lon = d.get("geo_lon")
+    it.market_samples = d.get("market_samples")
+    it.market_min_price = d.get("market_min_price")
+    it.tags = list(d.get("tags") or [])
+    return it
+
+
+
+def _build_alert_caption(user: dict[str, Any] | None, item: Any, search_title: str) -> str:
+    """Compact HTML caption for a new-lot push (Telegram limit: 1024 chars)."""
+    title = html.escape(str(getattr(item, "title", "") or ""))
+    if len(title) > 80:
+        title = title[:77] + "..."
+    deal_badge = getattr(item, "deal_badge", None)
+    if deal_badge:
+        header = f"{tg_e(TG_EMOJI_LIGHTNING, '⚡')} <b>Выгодная находка</b> · {html.escape(str(search_title))}"
+    else:
+        header = f"{tg_e(TG_EMOJI_RADAR, '👁')} <b>Новый лот по радару</b> · {html.escape(str(search_title))}"
+
+    price_str = getattr(item, "price_formatted", "") or ""
+    if not price_str and getattr(item, "price", None):
+        price_str = format_money(int(item.price)) + " ₽"
+    price_line = f"💰 <b>{html.escape(str(price_str))}</b>" if price_str else ""
+    market_median = getattr(item, "market_median", None)
+    if market_median:
+        price_line += f" · рынок {format_money(int(market_median))} ₽"
+    profit_abs = getattr(item, "profit_abs", None)
+    profit_pct = getattr(item, "profit_pct", None)
+    if profit_abs:
+        gain = f"+{format_money(int(profit_abs))} ₽"
+        if profit_pct:
+            gain += f" (-{int(profit_pct)}%)"
+        price_line += f" · <b>{gain}</b>"
+
+    meta: list[str] = []
+    dist = None
+    if user and user.get("home_lat") is not None and user.get("home_lon") is not None:
+        dist = lot_distance_km(user, getattr(item, "geo_lat", None), getattr(item, "geo_lon", None))
+    place_parts = []
+    if dist is not None:
+        place_parts.append(format_distance(dist))
+    city = str(getattr(item, "city", "") or "").strip()
+    if city:
+        place_parts.append(html.escape(city))
+    if place_parts:
+        meta.append(f"{tg_e(TG_EMOJI_PIN, '📍')} " + " · ".join(place_parts))
+    address = str(getattr(item, "address", "") or "").strip()
+    address_line = ""
+    if address:
+        address_line = f"<i>{html.escape(address[:60])}</i>"
+
+    seller = score_seller(item)
+    seller_parts = [f"{tg_e(TG_EMOJI_PROFILE, '👤')} {html.escape(seller['label'])}"]
+    rating = getattr(item, "seller_rating", None)
+    if rating:
+        seller_parts.append(f"{tg_e(TG_EMOJI_STAR, '⭐️')} {rating}")
+    meta.append(" ".join(seller_parts))
+
+    drop = price_history.price_drop(item.id, getattr(item, "price", None))
+    if drop:
+        meta.append(
+            f"📉 Снижение цены: {format_money(drop['amount'])} ₽ за {drop['days']:.1f} дн."
+        )
+
+    samples = getattr(item, "market_samples", None)
+    min_price = getattr(item, "market_min_price", None)
+    if samples and int(samples) >= 3 and min_price:
+        meta.append(
+            f"{tg_e(TG_EMOJI_CHART, '📊')} Аналогов на рынке: {int(samples)}, от {format_money(int(min_price))} ₽"
+        )
+
+    recommended_buy = getattr(item, "recommended_buy", None)
+    bargain = ""
+    if deal_badge and recommended_buy:
+        bargain_price = f"{recommended_buy:,} ₽".replace(",", " ")
+        bargain = (
+            f"{tg_e(TG_EMOJI_PRICE_TAG, '🏷')} <b>Выкуп: {bargain_price}</b>\n"
+            "<i>«Здравствуйте! Готов забрать сегодня, предложу "
+            f"{bargain_price} - возможен торг?»</i>"
+        )
+
+    blocks = [header, f"<b>{title}</b>"]
+    if price_line:
+        blocks.append(price_line)
+    if address_line:
+        meta.insert(0, address_line)
+    blocks.append("\n".join(meta))
+    if bargain:
+        blocks.append(f"<blockquote>{bargain}</blockquote>")
+
+    def _join(parts: list[str]) -> str:
+        return "\n".join([p for p in parts if p])
+
+    caption = _join(blocks)
+    if len(caption) > 1024:
+        stripped = [b for b in blocks if b != bargain]
+        caption = _join(stripped)
+    if len(caption) > 1024 and address_line in meta:
+        meta.remove(address_line)
+        blocks[3] = "\n".join(meta)
+        caption = _join(blocks)
+    if len(caption) > 1024:
+        while len(caption) > 1024:
+            cut = max(1, len(caption) - 1000)
+            caption = caption[:cut]
+    return caption.strip()
 
 
 def acquire_bot_lock() -> bool:
@@ -98,20 +461,20 @@ def acquire_bot_lock() -> bool:
         return False
 
 
-# Format: (label, query, category_path, default_pmin)
+# Format: (label, query, category_path, default_pmin, icon_custom_emoji_id)
 POPULAR_PRODUCTS = [
-    ("⚡ DDR5 32GB 6000MHz", "DDR5 32GB 6000MHz", "tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat", 7000),
-    ("💻 RTX 4070 Super", "RTX 4070 Super", "tovary_dlya_kompyutera/komplektuyuschie/videokarty", 50000),
-    ("📱 iPhone 16 Pro Max", "iPhone 16 Pro Max", "telefony/mobilnye_telefony/apple", 90000),
-    ("📱 iPhone 15 128GB", "iPhone 15", "telefony/mobilnye_telefony/apple", 45000),
-    ("🎮 PlayStation 5 Slim", "PlayStation 5 Slim", "igry_pristavki_i_programmy/igrovye_pristavki", 38000),
-    ("⚡ Ryzen 7 7800X3D", "Ryzen 7 7800X3D", "tovary_dlya_kompyutera/komplektuyuschie/processory", 28000),
-    ("💻 MacBook Air M2 / M3", "MacBook Air M2", "noutbuki/apple", 65000),
-    ("🎮 Steam Deck OLED", "Steam Deck OLED", "igry_pristavki_i_programmy/igrovye_pristavki", 45000),
-    ("🚗 Lada Vesta SW Cross", "Lada Vesta SW Cross", "avtomobili", 700000),
-    ("🚗 Daewoo Matiz 0.8", "Daewoo Matiz", "avtomobili", 80000),
-    ("🚗 BMW 320d (G20)", "BMW 320d M Sport", "avtomobili", 2500000),
-    ("🚗 Toyota Camry 2.5", "Toyota Camry 2.5", "avtomobili", 2000000),
+    ("DDR5 32GB 6000MHz", "DDR5 32GB 6000MHz", "tovary_dlya_kompyutera/komplektuyuschie/operativnaya_pamyat", 7000, TG_EMOJI_LIGHTNING),
+    ("RTX 4070 Super", "RTX 4070 Super", "tovary_dlya_kompyutera/komplektuyuschie/videokarty", 50000, TG_EMOJI_GAMEPAD),
+    ("iPhone 16 Pro Max", "iPhone 16 Pro Max", "telefony/mobilnye_telefony/apple", 90000, TG_EMOJI_PHONE),
+    ("iPhone 15 128GB", "iPhone 15", "telefony/mobilnye_telefony/apple", 45000, TG_EMOJI_PHONE),
+    ("PlayStation 5 Slim", "PlayStation 5 Slim", "igry_pristavki_i_programmy/igrovye_pristavki", 38000, TG_EMOJI_GAMEPAD),
+    ("Ryzen 7 7800X3D", "Ryzen 7 7800X3D", "tovary_dlya_kompyutera/komplektuyuschie/processory", 28000, TG_EMOJI_COG),
+    ("MacBook Air M2 / M3", "MacBook Air M2", "noutbuki/apple", 65000, TG_EMOJI_KEYBOARD),
+    ("Steam Deck OLED", "Steam Deck OLED", "igry_pristavki_i_programmy/igrovye_pristavki", 45000, TG_EMOJI_GAMEPAD),
+    ("Lada Vesta SW Cross", "Lada Vesta SW Cross", "avtomobili", 700000, TG_EMOJI_NAV),
+    ("Daewoo Matiz 0.8", "Daewoo Matiz", "avtomobili", 80000, TG_EMOJI_NAV),
+    ("BMW 320d (G20)", "BMW 320d M Sport", "avtomobili", 2500000, TG_EMOJI_NAV),
+    ("Toyota Camry 2.5", "Toyota Camry 2.5", "avtomobili", 2000000, TG_EMOJI_NAV),
 ]
 
 POPULAR_CITIES = [
@@ -257,26 +620,37 @@ class AvitoTelegramBot:
             logger.error("Failed to send document: %s", exc)
 
     def send_photo_alert(self, chat_id: int, item: ParsedItem, search_title: str) -> None:
-        caption = format_ad_message(search_title, item)
+        try:
+            user = users_store.get_user(chat_id)
+        except Exception:
+            user = None
+        caption = _build_alert_caption(user, item, search_title)
         base_url = os.environ.get("MINI_APP_URL", "https://avito-radar.onrender.com/").rstrip("/")
         miniapp_url = f"{base_url}/?user_id={chat_id}"
         kb = {
             "inline_keyboard": [
                 [
                     {
-                        "text": "ТЕРМИНАЛ РАДАРА (MINI APP)",
-                        "web_app": {"url": miniapp_url},
+                        "text": "⚡ Открыть на Авито",
+                        "url": item.url,
                         "icon_custom_emoji_id": TG_EMOJI_LIGHTNING,
                     }
                 ],
                 [
                     {
-                        "text": "Открыть на Авито",
+                        "text": "💬 Написать продавцу",
                         "url": item.url,
-                        "icon_custom_emoji_id": TG_EMOJI_LINK,
+                        "icon_custom_emoji_id": TG_EMOJI_PROFILE,
                     },
                     {
-                        "text": "Скрыть лот",
+                        "text": "🎯 Терминал",
+                        "web_app": {"url": miniapp_url},
+                        "icon_custom_emoji_id": TG_EMOJI_TARGET,
+                    },
+                ],
+                [
+                    {
+                        "text": "🙈 Скрыть лот",
                         "callback_data": f"vanish_{item.id}",
                         "icon_custom_emoji_id": TG_EMOJI_EYE_OFF,
                     }
@@ -307,63 +681,161 @@ class AvitoTelegramBot:
             "inline_keyboard": [
                 [
                     {
-                        "text": "ТЕРМИНАЛ РАДАРА (MINI APP)",
+                        "text": "Терминал радара (Mini App)",
                         "web_app": {"url": miniapp_url},
                         "icon_custom_emoji_id": TG_EMOJI_LIGHTNING,
                     }
                 ],
                 [
                     {
-                        "text": "СОЗДАТЬ НОВЫЙ РАДАР",
+                        "text": "Создать новый радар",
                         "callback_data": "menu_add",
                         "icon_custom_emoji_id": TG_EMOJI_PLUS,
                     }
                 ],
                 [
                     {
-                        "text": "МОИ РАДАРЫ И ВЫГРУЗКА",
+                        "text": "Мои радары и выгрузка",
                         "callback_data": "menu_list",
                         "icon_custom_emoji_id": TG_EMOJI_LIST,
                     }
                 ],
                 [
                     {
-                        "text": "НАСТРОЙКИ МОНИТОРИНГА 24/7",
+                        "text": "PRO Sniper и тарифы",
+                        "callback_data": "menu_pro",
+                        "icon_custom_emoji_id": TG_EMOJI_CROWN,
+                    }
+                ],
+                [
+                    {
+                        "text": "Настройки мониторинга 24/7",
                         "callback_data": "menu_settings",
                         "icon_custom_emoji_id": TG_EMOJI_GEAR,
                     }
                 ],
             ]
         }
+        if self._is_owner(chat_id):
+            rows = kb["inline_keyboard"]
+            rows.insert(
+                -1,
+                [{
+                    "text": "Админка",
+                    "callback_data": "menu_admin",
+                    "icon_custom_emoji_id": TG_EMOJI_SHIELD,
+                }],
+            )
+        return kb
+
+    def _is_owner(self, chat_id: int | None) -> bool:
+        owner = str(os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
+        return bool(owner and chat_id is not None and str(chat_id) == owner)
+
+    def send_admin_menu(self, chat_id: int, message_id: int | None = None) -> None:
+        text = (
+            f"{tg_e(TG_EMOJI_SHIELD, '🛡')} <b>Админка владельца</b>\n\n"
+            f"{tg_e(TG_EMOJI_PLUS, '➕')} <code>/grant user_id 30</code> - выдать PRO на 30 дней\n"
+            f"{tg_e(TG_EMOJI_PLUS, '➕')} <code>/grant user_id forever</code> - выдать PRO навсегда\n"
+            f"{tg_e(TG_EMOJI_CROSS, '❌')} <code>/revoke user_id</code> - снять PRO\n"
+            f"{tg_e(TG_EMOJI_LIST, '🗂')} <code>/users</code> - статистика пользователей"
+        )
+        kb = {
+            "inline_keyboard": [
+                [{"text": "В главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}]
+            ]
+        }
+        self.render_menu(chat_id, text, kb, message_id=message_id)
+
+    def handle_admin_command(self, chat_id: int, text: str) -> None:
+        parts = text.split()
+        cmd = parts[0].split("@")[0].lower()
+        if cmd == "/grant":
+            if len(parts) < 2:
+                self.send_message(chat_id, f"{tg_e(TG_EMOJI_WARN, '❗️')} Формат: <code>/grant user_id [days|forever]</code>")
+                return
+            uid = parts[1]
+            arg = parts[2] if len(parts) > 2 else "30"
+            if arg.lower() == "forever":
+                user = users_store.grant_pro_forever(uid)
+                self.send_message(
+                    chat_id,
+                    f"{tg_e(TG_EMOJI_CHECK, '✅')} PRO навсегда выдан пользователю <code>{html.escape(uid)}</code>"
+                    f" ({html.escape(str(user.get('username') or 'без username'))})",
+                )
+            elif arg.isdigit() and int(arg) > 0:
+                user = users_store.grant_pro(uid, int(arg))
+                exp = user.get("pro_expires_at") or ""
+                self.send_message(
+                    chat_id,
+                    f"{tg_e(TG_EMOJI_CHECK, '✅')} PRO на {int(arg)} дн. выдан пользователю <code>{html.escape(uid)}</code>\n"
+                    f"Действует до: <code>{html.escape(exp)}</code>",
+                )
+            else:
+                self.send_message(
+                    chat_id,
+                    f"{tg_e(TG_EMOJI_WARN, '❗️')} Неверный срок. Укажите число дней или <code>forever</code>:\n"
+                    "<code>/grant 123456789 30</code>",
+                )
+        elif cmd == "/revoke":
+            if len(parts) < 2:
+                self.send_message(chat_id, f"{tg_e(TG_EMOJI_WARN, '❗️')} Формат: <code>/revoke user_id</code>")
+                return
+            uid = parts[1]
+            users_store.revoke_pro(uid)
+            self.send_message(
+                chat_id,
+                f"{tg_e(TG_EMOJI_CHECK, '✅')} PRO снят у пользователя <code>{html.escape(uid)}</code>",
+            )
+        elif cmd == "/users":
+            all_u = users_store.all_users()
+            pro_users = [u for u in all_u if u.get("plan") == "pro"]
+            free_users = [u for u in all_u if u.get("plan") != "pro"]
+            lines = [
+                f"{tg_e(TG_EMOJI_ANALYTICS, '📈')} <b>Статистика пользователей</b>\n",
+                f"Всего: <b>{len(all_u)}</b> · PRO: <b>{len(pro_users)}</b> · Free: <b>{len(free_users)}</b>",
+            ]
+            shown = sorted(all_u, key=lambda u: 0 if u.get("plan") == "pro" else 1)[:20]
+            if shown:
+                lines.append("")
+                for u in shown:
+                    name = html.escape(str(u.get("username") or u.get("user_id") or "?"))
+                    plan = "PRO" if u.get("plan") == "pro" else "free"
+                    exp = u.get("pro_expires_at")
+                    if u.get("plan") == "pro" and exp:
+                        plan += f" до {html.escape(str(exp))}"
+                    lines.append(f"• <code>{name}</code> · {plan}")
+            self.send_message(chat_id, "\n".join(lines))
 
     def send_main_menu(self, chat_id: int, message_id: int | None = None) -> None:
         session = self.get_session(chat_id)
         session.state = "IDLE"
-        watch_status = "24/7 Активен" if self.monitoring_active else "Выключен"
+        status_emoji = TG_EMOJI_CHECK if self.monitoring_active else TG_EMOJI_EYE_OFF
+        watch_status = "24/7 активен" if self.monitoring_active else "остановлен"
         searches = list_searches(user_id=chat_id)
         text = (
-            f"🏛 <b>AVITO RADAR // TERMINAL</b>\n"
+            f"{tg_e(TG_EMOJI_CROWN, '👑')} <b>AVITO RADAR // TERMINAL</b>\n"
             f"<i>Премиальный мониторинг выгодных предложений</i>\n\n"
-            f"🟢 <b>Статус:</b> <code>{watch_status}</code> (интервал: 15 мин)\n"
-            f"🎯 <b>Отслеживаемых радаров:</b> <code>{len(searches)} шт.</code>\n\n"
-            f"{tg_e(TG_EMOJI_LIGHTNING, '⚡')} <b>Все функции доступны в едином терминале:</b>\n"
+            f"{tg_e(status_emoji, '✅')} <b>Статус:</b> <code>{watch_status}</code> · интервал 15 мин\n"
+            f"{tg_e(TG_EMOJI_TARGET, '🎯')} <b>Отслеживаемых радаров:</b> <code>{len(searches)}</code>\n\n"
+            f"{tg_e(TG_EMOJI_SPARKLE, '✨')} <b>Все функции - в едином терминале</b>\n"
             f"• {tg_e(TG_EMOJI_SEARCH, '🔎')} Мгновенный поиск товаров и авто с автодополнением\n"
-            f"• {tg_e(TG_EMOJI_CHART, '📊')} Оценка рыночной стоимости и подсветка максимальной выгоды\n"
+            f"• {tg_e(TG_EMOJI_CHART, '📊')} Рыночные цены по комплектациям и оценка выгоды\n"
             f"• {tg_e(TG_EMOJI_SHIELD, '🛡')} Защита от байт-цен (100 ₽), дефектов и мусора\n"
-            f"• {tg_e(TG_EMOJI_ANALYTICS, '📈')} Режим интерактивной таблицы прямо в Telegram\n\n"
-            f"<i>Уведомления о новых предложениях ниже рынка поступают мгновенно.</i>"
+            f"• {tg_e(TG_EMOJI_ANALYTICS, '📈')} Интерактивная таблица прямо в Telegram\n\n"
+            f"<i>Уведомления о лотах ниже рынка приходят мгновенно.</i>"
         )
         self.render_menu(chat_id, text, self.main_menu_keyboard(chat_id), message_id=message_id)
 
     def send_add_menu(self, chat_id: int, message_id: int | None = None) -> None:
         text = (
-            "📡 <b>НАСТРОЙКА НОВОГО РАДАРА</b>\n\n"
+            f"{tg_e(TG_EMOJI_BROADCAST, '🛜')} <b>Настройка нового радара</b>\n\n"
             "Выберите способ настройки отслеживания:"
         )
         kb = {
             "inline_keyboard": [
-                [{"text": "Выбрать товар и город (Каталог)", "callback_data": "add_wizard_product", "icon_custom_emoji_id": TG_EMOJI_SEARCH}],
-                [{"text": "Вставить скопированную ссылку с Авито", "callback_data": "add_by_url", "icon_custom_emoji_id": TG_EMOJI_LINK}],
+                [{"text": "Выбрать товар и город (каталог)", "callback_data": "add_wizard_product", "icon_custom_emoji_id": TG_EMOJI_SEARCH}],
+                [{"text": "Вставить ссылку с Авито", "callback_data": "add_by_url", "icon_custom_emoji_id": TG_EMOJI_LINK}],
                 [{"text": "Назад в главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}],
             ]
         }
@@ -371,12 +843,12 @@ class AvitoTelegramBot:
 
     def send_product_selection(self, chat_id: int, message_id: int | None = None) -> None:
         text = (
-            "📡 <b>ШАГ 1 ИЗ 2: ЧТО ОТСЛЕЖИВАТЬ?</b>\n\n"
-            "Выберите популярную категорию или введите свой запрос:"
+            f"{tg_e(TG_EMOJI_BROADCAST, '🛜')} <b>Шаг 1 из 2 - что отслеживать?</b>\n\n"
+            "Выберите популярный запрос или введите свой:"
         )
         buttons = []
-        for idx, (label, *_) in enumerate(POPULAR_PRODUCTS):
-            buttons.append([{"text": label, "callback_data": f"pick_prod_{idx}"}])
+        for idx, (label, _q, _cat, _pmin, icon_id) in enumerate(POPULAR_PRODUCTS):
+            buttons.append([{"text": label, "callback_data": f"pick_prod_{idx}", "icon_custom_emoji_id": icon_id}])
         buttons.append([{"text": "Ввести другое название вручную", "callback_data": "pick_prod_custom", "icon_custom_emoji_id": TG_EMOJI_PENCIL}])
         buttons.append([{"text": "Назад в меню", "callback_data": "menu_add", "icon_custom_emoji_id": TG_EMOJI_BACK}])
         kb = {"inline_keyboard": buttons}
@@ -385,7 +857,7 @@ class AvitoTelegramBot:
     def send_city_selection(self, chat_id: int, message_id: int | None = None) -> None:
         session = self.get_session(chat_id)
         text = (
-            f"{tg_e(TG_EMOJI_PIN, '📍')} <b>ШАГ 2 ИЗ 2: ВЫБОР РЕГИОНА</b>\n\n"
+            f"{tg_e(TG_EMOJI_PIN, '📍')} <b>Шаг 2 из 2 - выбор региона</b>\n\n"
             f"Товар: <b>{html.escape(session.temp_query)}</b>\n\n"
             f"Выберите город или отслеживание по всей стране:"
         )
@@ -402,37 +874,41 @@ class AvitoTelegramBot:
         searches = list_searches(user_id=chat_id)
         if not searches:
             text = (
-                f"{tg_e(TG_EMOJI_LIST, '🗂')} <b>АКТИВНЫЕ РАДАРЫ</b>\n\n"
-                "У вас пока нет сохранённых поисков.\n"
-                "Нажмите кнопку ниже, чтобы запустить первый радар!"
+                f"{tg_e(TG_EMOJI_LIST, '🗂')} <b>Мои радары</b>\n\n"
+                "Сохранённых поисков пока нет.\n"
+                "Нажмите кнопку ниже, чтобы запустить первый радар."
             )
             kb = {
                 "inline_keyboard": [
-                    [{"text": "ДОБАВИТЬ НОВЫЙ РАДАР", "callback_data": "menu_add", "icon_custom_emoji_id": TG_EMOJI_PLUS}],
+                    [{"text": "Добавить новый радар", "callback_data": "menu_add", "icon_custom_emoji_id": TG_EMOJI_PLUS}],
                     [{"text": "В главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}],
                 ]
             }
             self.render_menu(chat_id, text, kb, message_id=message_id)
             return
 
-        text = f"{tg_e(TG_EMOJI_LIST, '🗂')} <b>АКТИВНЫЕ РАДАРЫ ({len(searches)} шт.):</b>\n\n"
+        text = f"{tg_e(TG_EMOJI_LIST, '🗂')} <b>Мои радары</b> · <code>{len(searches)}</code>\n\n"
         buttons = []
         for idx, s in enumerate(searches, start=1):
             listings = load_listings(s)
-            pmin_info = f" · от {s.min_price:,} ₽" if s.min_price else ""
-            acc_status = "ВКЛ ✅" if getattr(s, "exclude_accessories", True) else "ВЫКЛ ❌"
+            pmin_fmt = f"{s.min_price:,} ₽".replace(",", " ") if s.min_price else "нет"
+            acc_on = bool(getattr(s, "exclude_accessories", True))
+            acc_status = "вкл ✅" if acc_on else "выкл ❌"
             text += f"<b>{idx}. {html.escape(s.title)}</b>\n"
-            text += f"   {tg_e(TG_EMOJI_PIN, '📍')} {html.escape(s.city)} · В базе: {len(listings)} лотов{pmin_info} · Без аксов: {acc_status}\n\n"
+            text += (
+                f"    {tg_e(TG_EMOJI_PIN, '📍')} {html.escape(s.city)} · "
+                f"в базе <code>{len(listings)}</code> лотов · порог {pmin_fmt} · без аксов: {acc_status}\n\n"
+            )
             buttons.append([
-                {"text": f"Без аксов ({acc_status})", "callback_data": f"toggle_acc_{s.name}", "icon_custom_emoji_id": TG_EMOJI_SHIELD},
-                {"text": f"Порог ({s.min_price or '0'} ₽)", "callback_data": f"set_pmin_{s.name}", "icon_custom_emoji_id": TG_EMOJI_PRICE_TAG},
+                {"text": f"Без аксов: {'вкл' if acc_on else 'выкл'}", "callback_data": f"toggle_acc_{s.name}", "icon_custom_emoji_id": TG_EMOJI_SHIELD},
+                {"text": f"Порог: {pmin_fmt}", "callback_data": f"set_pmin_{s.name}", "icon_custom_emoji_id": TG_EMOJI_PRICE_TAG},
             ])
             buttons.append([
-                {"text": f"Скачать Excel — {s.title}", "callback_data": f"action_scan_{s.name}", "icon_custom_emoji_id": TG_EMOJI_CHART},
-                {"text": f"Удалить «{s.title}»", "callback_data": f"action_del_{s.name}", "icon_custom_emoji_id": TG_EMOJI_TRASH},
+                {"text": "Скачать Excel", "callback_data": f"action_scan_{s.name}", "icon_custom_emoji_id": TG_EMOJI_CHART},
+                {"text": "Удалить радар", "callback_data": f"action_del_{s.name}", "icon_custom_emoji_id": TG_EMOJI_TRASH},
             ])
 
-        buttons.append([{"text": "СОЗДАТЬ ЕЩЁ РАДАР", "callback_data": "menu_add", "icon_custom_emoji_id": TG_EMOJI_PLUS}])
+        buttons.append([{"text": "Создать ещё радар", "callback_data": "menu_add", "icon_custom_emoji_id": TG_EMOJI_PLUS}])
         buttons.append([{"text": "В главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}])
 
         kb = {"inline_keyboard": buttons}
@@ -440,34 +916,123 @@ class AvitoTelegramBot:
 
     def send_settings_menu(self, chat_id: int, message_id: int | None = None) -> None:
         self.settings = load_settings()
-        priv_text = "Продавцы: ТОЛЬКО ЧАСТНИКИ ✅" if self.settings.alert_private_only else "Продавцы: ВСЕ (с магазинами) ❌"
-        junk_text = "Анти-мусор и байт-цены: ВКЛЮЧЕНО ✅" if self.settings.alert_filter_junk else "Анти-мусор: ВЫКЛЮЧЕНО ❌"
-        acc_text = "Исключать аксессуары: ВКЛЮЧЕНО ✅" if getattr(self.settings, "alert_filter_accessories", True) else "Исключать аксессуары: ВЫКЛЮЧЕНО ❌"
+        priv_on = bool(self.settings.alert_private_only)
+        junk_on = bool(self.settings.alert_filter_junk)
+        acc_on = bool(getattr(self.settings, "alert_filter_accessories", True))
+        interval = int(self.settings.watch_interval)
+
+        def _mark(sec: int) -> str:
+            return " ✅" if interval == sec else ""
+
         text = (
-            f"{tg_e(TG_EMOJI_GEAR, '⚙')} <b>НАСТРОЙКИ МОНИТОРИНГА 24/7</b>\n\n"
-            f"• Проверка новинок: <b>каждые {self.settings.watch_interval:.0f} сек</b>\n"
-            f"• Фильтр продавцов: <b>{'Только частники' if self.settings.alert_private_only else 'Все предложения'}</b>\n"
-            f"• Фильтр фейковых цен (100 ₽): <b>{'Активен ✅' if self.settings.alert_filter_junk else 'Выключен'}</b>\n"
-            f"• Фильтр аксессуаров / запчастей: <b>{'Активен ✅' if getattr(self.settings, 'alert_filter_accessories', True) else 'Выключен'}</b>\n"
-            f"• Игнорировать дубликаты: <b>{'Да' if self.settings.alert_no_republished else 'Нет'}</b>\n\n"
-            "Нажмите на нужную кнопку для переключения параметра:"
+            f"{tg_e(TG_EMOJI_GEAR, '⚙')} <b>Настройки мониторинга 24/7</b>\n\n"
+            f"{tg_e(TG_EMOJI_TIMER, '⏲️')} Интервал проверки: <b>{interval} сек</b>\n"
+            f"{tg_e(TG_EMOJI_PROFILE, '👤')} Продавцы: <b>{'только частные' if priv_on else 'все (с магазинами)'}</b>\n"
+            f"{tg_e(TG_EMOJI_SHIELD, '🛡')} Анти-мусор и байт-цены: <b>{'вкл ✅' if junk_on else 'выкл ❌'}</b>\n"
+            f"{tg_e(TG_EMOJI_SHIELD, '🛡')} Фильтр аксессуаров: <b>{'вкл ✅' if acc_on else 'выкл ❌'}</b>\n"
+            f"{tg_e(TG_EMOJI_REPEAT, '🔁')} Игнорировать дубликаты: <b>{'да' if self.settings.alert_no_republished else 'нет'}</b>\n\n"
+            "Нажмите кнопку, чтобы переключить параметр:"
         )
         kb = {
             "inline_keyboard": [
-                [{"text": priv_text, "callback_data": "set_toggle_private", "icon_custom_emoji_id": TG_EMOJI_PROFILE}],
-                [{"text": junk_text, "callback_data": "set_toggle_junk", "icon_custom_emoji_id": TG_EMOJI_SHIELD}],
-                [{"text": acc_text, "callback_data": "set_toggle_accessories", "icon_custom_emoji_id": TG_EMOJI_SHIELD}],
-                [{"text": "Проверка раз в 1 минуту", "callback_data": "set_interval_60", "icon_custom_emoji_id": TG_EMOJI_CLOCK}],
-                [{"text": "Проверка раз в 2 минуты", "callback_data": "set_interval_120", "icon_custom_emoji_id": TG_EMOJI_CLOCK}],
-                [{"text": "Проверка раз в 5 минут", "callback_data": "set_interval_300", "icon_custom_emoji_id": TG_EMOJI_CLOCK}],
+                [{"text": f"Продавцы: {'только частные' if priv_on else 'все'}", "callback_data": "set_toggle_private", "icon_custom_emoji_id": TG_EMOJI_PROFILE}],
+                [{"text": f"Анти-мусор: {'вкл' if junk_on else 'выкл'}", "callback_data": "set_toggle_junk", "icon_custom_emoji_id": TG_EMOJI_SHIELD}],
+                [{"text": f"Аксессуары: {'скрывать' if acc_on else 'показывать'}", "callback_data": "set_toggle_accessories", "icon_custom_emoji_id": TG_EMOJI_SHIELD}],
+                [{"text": f"Интервал: 1 мин{_mark(60)}", "callback_data": "set_interval_60", "icon_custom_emoji_id": TG_EMOJI_CLOCK}],
+                [{"text": f"Интервал: 2 мин{_mark(120)}", "callback_data": "set_interval_120", "icon_custom_emoji_id": TG_EMOJI_CLOCK}],
+                [{"text": f"Интервал: 5 мин{_mark(300)}", "callback_data": "set_interval_300", "icon_custom_emoji_id": TG_EMOJI_CLOCK}],
                 [{"text": "В главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}],
             ]
         }
         self.render_menu(chat_id, text, kb, message_id=message_id)
 
+    def send_pro_menu(self, chat_id: int, message_id: int | None = None) -> None:
+        profile = users_store.public_profile(chat_id)
+        is_pro_now = profile["plan"] == "pro"
+        base_url = os.environ.get("MINI_APP_URL", "https://avito-radar.onrender.com/").rstrip("/")
+        miniapp_url = f"{base_url}/?user_id={chat_id}"
+        if is_pro_now:
+            text = (
+                f"{tg_e(TG_EMOJI_CROWN, '👑')} <b>PRO Sniper активен</b>\n\n"
+                f"Действует до: <code>{profile.get('pro_expires_at') or '-'}</code>\n\n"
+                f"⚡ 15 радаров · мгновенные уведомления · безлимитная аналитика"
+            )
+            kb = {"inline_keyboard": [[{"text": "В главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}]]}
+            self.render_menu(chat_id, text, kb, message_id=message_id)
+            return
+
+        trial_available = bool(profile.get("trial_available"))
+        text = (
+            f"{tg_e(TG_EMOJI_CROWN, '👑')} <b>PRO Sniper - тарифы</b>\n\n"
+            f"Бесплатно: 1 радар, 3 анализа рынка в сутки, уведомления с задержкой 15 мин.\n"
+            f"PRO: 15 радаров, безлимитная аналитика, мгновенные уведомления, шаблоны торга.\n\n"
+            f"{tg_e(TG_EMOJI_SPARKLE, '✨')} <b>PRO Sniper - 30 дней</b> · 299 Stars\n"
+            f"{tg_e(TG_EMOJI_SPARKLE, '✨')} <b>PRO Sniper - 12 месяцев</b> · 1999 Stars\n"
+        )
+        if trial_available:
+            text += "\nПробный PRO на 24 часа доступен бесплатно - один раз."
+        buttons: list[list[dict[str, Any]]] = []
+        if trial_available:
+            buttons.append([{"text": "Пробный PRO на 24ч", "callback_data": "pro_trial", "icon_custom_emoji_id": TG_EMOJI_SPARKLE}])
+        buttons.append([{"text": "Оплатить 30 дней (299 Stars)", "callback_data": "pro_buy_pro_month", "icon_custom_emoji_id": TG_EMOJI_CROWN}])
+        buttons.append([{"text": "Оплатить 12 месяцев (1999 Stars)", "callback_data": "pro_buy_pro_year", "icon_custom_emoji_id": TG_EMOJI_CROWN}])
+        buttons.append([{"text": "Оформить PRO (Mini App)", "web_app": {"url": miniapp_url}, "icon_custom_emoji_id": TG_EMOJI_LIGHTNING}])
+        buttons.append([{"text": "В главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}])
+        self.render_menu(chat_id, text, {"inline_keyboard": buttons}, message_id=message_id)
+
+    def send_stars_invoice(self, chat_id: int, plan_id: str) -> None:
+        plan = billing.get_plan(plan_id)
+        if not plan:
+            return
+        payload = f"pro:{plan_id}:{chat_id}:{secrets.token_hex(8)}"
+        res = self.call_api("sendInvoice", {
+            "chat_id": chat_id,
+            "title": plan["title"],
+            "description": "PRO Sniper: 15 радаров, мгновенные уведомления, безлимитная аналитика рынка.",
+            "payload": payload,
+            "provider_token": "",
+            "currency": "XTR",
+            "prices": [{"label": plan["title"], "amount": plan["stars"]}],
+        })
+        if not res.get("ok"):
+            logger.warning("sendInvoice failed: %s", res.get("description"))
+
+    def send_trial_result(self, chat_id: int) -> None:
+        result = users_store.grant_trial(chat_id)
+        if result["ok"]:
+            user = result["user"]
+            self.send_message(
+                chat_id,
+                f"{tg_e(TG_EMOJI_SPARKLE, '✨')} <b>Пробный PRO активирован на 24 часа!</b>\n"
+                f"Действует до: <code>{user.get('pro_expires_at')}</code>\n\n"
+                f"⚡ Уведомления теперь мгновенные, аналитика без лимитов.",
+            )
+        else:
+            self.send_message(
+                chat_id,
+                f"{tg_e(TG_EMOJI_WARN, '❗️')} Пробный PRO уже был использован ранее.\n"
+                f"Оформите PRO по кнопке в меню тарифов: команда /pro",
+            )
+
     # --- Search Creation Logic ---
 
     def process_create_search(self, chat_id: int, url: str, custom_name: str | None = None, message_id: int | None = None) -> None:
+        # Freemium limit: free users can keep only 1 active radar
+        existing = list_searches(user_id=chat_id)
+        limit = users_store.get_limits(chat_id)["max_searches"]
+        already = bool(custom_name and load_search(custom_name))
+        if not already and len(existing) >= limit:
+            text = (
+                f"{tg_e(TG_EMOJI_WARN, '❗️')} <b>Достигнут лимит бесплатного тарифа</b>\n\n"
+                f"На FREE доступен <b>1 радар</b>. PRO Sniper снимает лимит: до 15 радаров, "
+                f"мгновенные уведомления и безлимитная аналитика рынка."
+            )
+            kb = {"inline_keyboard": [
+                [{"text": "Оформить PRO", "callback_data": "menu_pro", "icon_custom_emoji_id": TG_EMOJI_CROWN}],
+                [{"text": "В главное меню", "callback_data": "menu_main", "icon_custom_emoji_id": TG_EMOJI_BACK}],
+            ]}
+            self.render_menu(chat_id, text, kb, message_id=message_id)
+            return
         self.render_menu(
             chat_id,
             f"{tg_e(TG_EMOJI_HOURGLASS, '⌛️')} <b>Анализирую параметры и фильтры на Авито...</b>\nПодождите пару секунд.",
@@ -487,13 +1052,13 @@ class AvitoTelegramBot:
                     counter += 1
 
             rec = create_search_from_url(client, url, custom_name=resolved_name, user_id=chat_id)
-            pmin_str = f"\n{tg_e(TG_EMOJI_PRICE_TAG, '🏷')} Мин. цена: {rec.min_price:,} ₽" if rec.min_price else ""
+            pmin_str = f"\n{tg_e(TG_EMOJI_PRICE_TAG, '🏷')} Минимальная цена: {rec.min_price:,} ₽" if rec.min_price else ""
             text = (
-                f"{tg_e(TG_EMOJI_CHECK, '✅')} <b>Поиск успешно настроен и сохранён!</b>\n\n"
-                f"📌 <b>{html.escape(rec.title)}</b>\n"
-                f"{tg_e(TG_EMOJI_PIN, '📍')} Город: {html.escape(rec.city)}{pmin_str}\n"
+                f"{tg_e(TG_EMOJI_CHECK, '✅')} <b>Радар настроен и сохранён</b>\n\n"
+                f"{tg_e(TG_EMOJI_PIN, '📍')} <b>{html.escape(rec.title)}</b>\n"
+                f"{tg_e(TG_EMOJI_GLOBE, '🌐')} Город: {html.escape(rec.city)}{pmin_str}\n"
                 f"{tg_e(TG_EMOJI_TAG, '🏷')} Категория: {html.escape(rec.category_type)}\n"
-                f"🔑 Имя: <code>{rec.name}</code>\n\n"
+                f"{tg_e(TG_EMOJI_DOC, '📄')} Имя: <code>{rec.name}</code>\n\n"
                 f"Что сделать прямо сейчас?"
             )
             kb = {
@@ -526,24 +1091,25 @@ class AvitoTelegramBot:
         parts.append(f"{secs}с")
         uptime_str = " ".join(parts) or "1с"
 
-        watch_status = "24/7 Активен" if self.monitoring_active else "Выключен"
+        status_emoji = TG_EMOJI_CHECK if self.monitoring_active else TG_EMOJI_EYE_OFF
+        watch_status = "24/7 активен" if self.monitoring_active else "остановлен"
         searches = list_searches(user_id=chat_id)
         base_url = os.environ.get("MINI_APP_URL", "https://avito-radar.onrender.com/").rstrip("/")
         miniapp_url = f"{base_url}/?user_id={chat_id}"
 
         text = (
-            f"🏛 <b>AVITO RADAR // СТАТУС СЕРВЕРА</b>\n\n"
-            f"⏱ <b>Время работы (Uptime):</b> <code>{uptime_str}</code>\n"
-            f"🟢 <b>Мониторинг 24/7:</b> <code>{watch_status}</code> (интервал: 15 мин)\n"
-            f"🎯 <b>Активных радаров:</b> <code>{len(searches)} шт.</code>\n"
-            f"📡 <b>Healthcheck:</b> <code>200 OK</code> (/health)\n\n"
+            f"{tg_e(TG_EMOJI_CROWN, '👑')} <b>AVITO RADAR // СТАТУС СЕРВЕРА</b>\n\n"
+            f"{tg_e(TG_EMOJI_TIMER, '⏲️')} Аптайм: <code>{uptime_str}</code>\n"
+            f"{tg_e(status_emoji, '✅')} Мониторинг 24/7: <code>{watch_status}</code> · интервал 15 мин\n"
+            f"{tg_e(TG_EMOJI_TARGET, '🎯')} Активных радаров: <code>{len(searches)}</code>\n"
+            f"{tg_e(TG_EMOJI_BROADCAST, '🛜')} Healthcheck: <code>200 OK</code> (/health)\n\n"
             f"<i>Терминал готов к работе на iOS, Android и Desktop.</i>"
         )
         kb = {
             "inline_keyboard": [
                 [
                     {
-                        "text": "ТЕРМИНАЛ РАДАРА (MINI APP)",
+                        "text": "Терминал радара (Mini App)",
                         "web_app": {"url": miniapp_url},
                         "icon_custom_emoji_id": TG_EMOJI_LIGHTNING,
                     }
@@ -600,6 +1166,34 @@ class AvitoTelegramBot:
         if msg_id:
             self.delete_message(chat_id, msg_id)
 
+        # /start command (with optional referral deep link)
+        if text.startswith("/start"):
+            session.state = "IDLE"
+            arg = text.split(" ", 1)[1].strip() if " " in text else ""
+            if arg.startswith("ref_"):
+                referrer_id = arg[len("ref_"):].strip()
+                result = users_store.add_referral(referrer_id, chat_id)
+                if result["ok"]:
+                    self.send_message(
+                        chat_id,
+                        f"{tg_e(TG_EMOJI_SPARKLE, '✨')} Вы пришли по приглашению - вашему другу начислено +3 дня PRO!",
+                    )
+            self.send_main_menu(chat_id)
+            return
+
+        # Admin commands (owner only, others are silently ignored)
+        if text.startswith(("/grant", "/revoke", "/users")):
+            session.state = "IDLE"
+            if self._is_owner(chat_id):
+                self.handle_admin_command(chat_id, text)
+            return
+
+        # /pro command: тарифы
+        if text.startswith("/pro"):
+            session.state = "IDLE"
+            self.send_pro_menu(chat_id, message_id=session.last_menu_message_id)
+            return
+
         # /status command
         if text.startswith("/status"):
             session.state = "IDLE"
@@ -610,6 +1204,49 @@ class AvitoTelegramBot:
         if text.startswith("/avatar"):
             session.state = "IDLE"
             self.send_avatar_message(chat_id)
+            return
+
+        # /address command: домашний адрес для расчёта расстояния до лотов
+        if text.startswith("/address"):
+            session.state = "IDLE"
+            arg = text.split(" ", 1)[1].strip() if " " in text else ""
+            if not arg:
+                user = users_store.get_user(chat_id)
+                current = user.get("home_address")
+                if current:
+                    self.send_message(
+                        chat_id,
+                        f"{tg_e(TG_EMOJI_PIN, '📍')} Текущий адрес: <b>{html.escape(current)}</b>\n"
+                        "Чтобы изменить: <code>/address город, улица, дом</code>",
+                    )
+                else:
+                    self.send_message(
+                        chat_id,
+                        f"{tg_e(TG_EMOJI_PIN, '📍')} Адрес не задан.\n"
+                        "Пример: <code>/address Челябинск, Ленина 50</code>",
+                    )
+                return
+            city_hint = ""
+            try:
+                own_searches = list_searches(user_id=chat_id)
+                if own_searches and own_searches[0].city:
+                    city_hint = own_searches[0].city
+            except Exception:
+                city_hint = ""
+            geo = geocode_address(arg, city=city_hint or None)
+            if not geo:
+                self.send_message(
+                    chat_id,
+                    f"{tg_e(TG_EMOJI_WARN, '❗️')} Адрес не найден, уточните улицу и город.\n"
+                    "Пример: <code>/address Челябинск, Ленина 50</code>",
+                )
+                return
+            users_store.set_home_address(chat_id, geo["display_name"], geo["lat"], geo["lon"])
+            self.send_message(
+                chat_id,
+                f"{tg_e(TG_EMOJI_CHECK, '✅')} Адрес сохранён: <b>{html.escape(geo['display_name'])}</b>\n"
+                "В уведомлениях будет показываться расстояние до лота.",
+            )
             return
 
         # Обработка шагов визарда, ожидающих текстовый ввод пользователя
@@ -732,6 +1369,20 @@ class AvitoTelegramBot:
         elif data == "menu_settings":
             self.send_settings_menu(chat_id, message_id=message_id)
 
+        elif data == "menu_admin":
+            if self._is_owner(chat_id):
+                self.send_admin_menu(chat_id, message_id=message_id)
+
+        elif data == "menu_pro":
+            self.send_pro_menu(chat_id, message_id=message_id)
+
+        elif data == "pro_trial":
+            self.send_trial_result(chat_id)
+
+        elif data.startswith("pro_buy_"):
+            plan_id = data[len("pro_buy_"):]
+            self.send_stars_invoice(chat_id, plan_id)
+
         elif data == "menu_toggle_watch":
             self.monitoring_active = not self.monitoring_active
             self.send_main_menu(chat_id, message_id=message_id)
@@ -795,7 +1446,7 @@ class AvitoTelegramBot:
             else:
                 try:
                     idx = int(val)
-                    label, query, cat_path, pmin = POPULAR_PRODUCTS[idx]
+                    label, query, cat_path, pmin, _icon = POPULAR_PRODUCTS[idx]
                     session.temp_query = query
                     session.temp_category_path = cat_path
                     session.temp_pmin = pmin
@@ -981,6 +1632,10 @@ class AvitoTelegramBot:
                         now_str = time.strftime("%Y-%m-%d %H:%M:%S")
                         for raw in page.items:
                             item_id = str(raw["id"])
+                            try:
+                                price_history.record_price(item_id, parse_catalog_item(raw).price)
+                            except Exception:
+                                pass
                             if item_id in seen:
                                 continue
 
@@ -1025,17 +1680,45 @@ class AvitoTelegramBot:
                                 p_it = parse_catalog_item(it)
                                 classify_item(p_it, category_type=s.category_type, search_query=q_str)
                                 parsed_list.append(p_it)
-                            annotate_market_prices(
+                            stats_map = annotate_market_prices(
                                 parsed_list,
                                 group_key_fn=lambda x: extract_goods_group(x.title) if s.category_type == "goods" else "all",
                             )
+
+                            # Feed the global variant market DB with this search's valid listings
+                            try:
+                                update_market_db(parsed_list, s.category_type)
+                            except Exception as db_exc:
+                                logger.warning("market_db update failed for %s: %s", s.name, db_exc)
+
                             # Update parsed item stats
                             for it in parsed_list:
                                 if it.id == parsed.id:
                                     parsed.market_price = it.market_price
                                     parsed.market_diff_percent = it.market_diff_percent
+                                    parsed.market_samples = getattr(it, "market_samples", None)
+                                    parsed.market_min_price = getattr(it, "market_min_price", None)
+                                    parsed.variant = it.variant
                                     parsed.tags = it.tags
                                     break
+
+                            # Weak local data for this variant? Backfill from the global market DB
+                            if s.category_type == "goods" and parsed.variant:
+                                try:
+                                    apply_global_market(parsed, stats_map.get(parsed.variant))
+                                except Exception as db_exc:
+                                    logger.warning("market_db lookup failed for %s: %s", parsed.variant, db_exc)
+
+                            # Track price history for every lot seen in this scan
+                            for it in parsed_list:
+                                try:
+                                    price_history.record_price(it.id, it.price)
+                                except Exception as ph_exc:
+                                    logger.debug("price_history record failed: %s", ph_exc)
+
+                            # Photo-repost dedup: same images under a new id do not re-alert
+                            if dedup.check_and_mark_post(s, parsed):
+                                continue
 
                             append_alert(s, parsed)
                             target_chat_id = None
@@ -1049,7 +1732,14 @@ class AvitoTelegramBot:
 
                             if target_chat_id:
                                 try:
-                                    self.send_photo_alert(target_chat_id, parsed, s.title)
+                                    try:
+                                        target_user = users_store.get_user(target_chat_id)
+                                    except Exception:
+                                        target_user = None
+                                    if users_store.is_pro(target_chat_id) and not users_store.is_quiet_now(target_user):
+                                        self.send_photo_alert(target_chat_id, parsed, s.title)
+                                    else:
+                                        queue_pending_alert(target_chat_id, item_to_pending_dict(parsed, s.title))
                                 except Exception as alert_err:
                                     logger.warning("Failed to send alert to user %s for %s: %s", target_chat_id, s.name, alert_err)
 
@@ -1065,6 +1755,56 @@ class AvitoTelegramBot:
 
             time.sleep(self.settings.watch_interval)
 
+    def pending_alerts_flush_loop(self) -> None:
+        """Отправка накопленных уведомлений free-юзерам раз в FREE_ALERT_DELAY_SEC."""
+        logger.info("Pending alerts flusher started (free delay %ss)", FREE_ALERT_DELAY_SEC)
+        while self.is_running:
+            time.sleep(30)
+            try:
+                if not PENDING_ALERTS_DIR.exists():
+                    continue
+                now = time.time()
+                for meta_file in PENDING_ALERTS_DIR.glob("*.meta.json"):
+                    uid = meta_file.name[: -len(".meta.json")]
+                    try:
+                        chat_id = int(uid)
+                    except ValueError:
+                        continue
+                    meta = read_flush_meta(uid)
+                    last_flush = float(meta.get("last_flush") or 0)
+                    pending = load_pending_alerts(uid)
+                    if not pending:
+                        continue
+                    try:
+                        flush_user = users_store.get_user(chat_id)
+                    except Exception:
+                        flush_user = None
+                    if users_store.is_quiet_now(flush_user):
+                        continue
+                    if now - last_flush < FREE_ALERT_DELAY_SEC and last_flush > 0:
+                        continue
+                    sent = 0
+                    for d in pending[:10]:
+                        try:
+                            self.send_photo_alert(chat_id, pending_dict_to_item(d), d.get("search_title") or "")
+                            sent += 1
+                        except Exception as exc:
+                            logger.warning("Flush alert to %s failed: %s", uid, exc)
+                    remaining = [d for i, d in enumerate(pending) if i >= sent]
+                    if sent:
+                        try:
+                            PENDING_ALERTS_DIR.mkdir(parents=True, exist_ok=True)
+                            path = PENDING_ALERTS_DIR / f"{uid}.jsonl"
+                            path.write_text(
+                                "".join(json.dumps(d, ensure_ascii=False) + "\n" for d in remaining),
+                                encoding="utf-8",
+                            )
+                        except Exception as exc:
+                            logger.warning("Rewrite pending queue for %s failed: %s", uid, exc)
+                    write_flush_meta(uid, now)
+            except Exception as exc:
+                logger.warning("Pending alerts flush error: %s", exc)
+
     # --- Main polling runner ---
 
     def run_polling(self) -> None:
@@ -1074,6 +1814,10 @@ class AvitoTelegramBot:
         # Start background watchdog thread
         watch_thread = threading.Thread(target=self.monitoring_loop, daemon=True)
         watch_thread.start()
+
+        # Flush delayed notifications for free users
+        flush_thread = threading.Thread(target=self.pending_alerts_flush_loop, daemon=True)
+        flush_thread.start()
 
         offset = 0
         while self.is_running:
@@ -1086,7 +1830,11 @@ class AvitoTelegramBot:
                 updates = res.get("result", [])
                 for upd in updates:
                     offset = max(offset, upd["update_id"] + 1)
-                    if "message" in upd:
+                    if "pre_checkout_query" in upd:
+                        billing.handle_pre_checkout(self.config.token, upd["pre_checkout_query"])
+                    elif "message" in upd and upd["message"].get("successful_payment"):
+                        billing.handle_successful_payment(self.config.token, upd["message"])
+                    elif "message" in upd:
                         self.handle_text_message(upd["message"])
                     elif "callback_query" in upd:
                         self.handle_callback_query(upd["callback_query"])
@@ -1096,9 +1844,38 @@ class AvitoTelegramBot:
                 time.sleep(2)
 
 
+def _lot_price_drop(item: Any) -> dict[str, Any] | None:
+    try:
+        return price_history.price_drop(item.id, item.price)
+    except Exception:
+        return None
+
+
+def _pending_alert_ids(user_id: str | int | None) -> set[str]:
+    """Ids of lots still sitting in the free-plan delayed notification queue."""
+    if user_id is None:
+        return set()
+    try:
+        return {str(d.get("id")) for d in load_pending_alerts(str(user_id)) if d.get("id") is not None}
+    except Exception:
+        return set()
+
+
 def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
     """Compile cached search listings and market analysis for Mini App."""
     bundle: dict[str, Any] = {}
+    home: dict[str, Any] | None = None
+    if user_id is not None and str(user_id).strip() and str(user_id) != "default":
+        try:
+            bundle["user"] = build_user_block(user_id)
+            u = users_store.get_user(user_id)
+            if u.get("home_lat") is not None and u.get("home_lon") is not None:
+                home = u
+        except Exception as exc:
+            logger.warning("Failed to build user block: %s", exc)
+    pending_ids = _pending_alert_ids(user_id)
+    searches_list: list[dict[str, Any]] = []
+    lots_list: list[dict[str, Any]] = []
     for s in list_searches(user_id=user_id):
         raws = load_listings(s)
         if not raws:
@@ -1113,6 +1890,68 @@ def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
             classify_item(it, category_type=s.category_type, search_query=s.title)
         items = [it for it in items if not getattr(it, "is_mismatched_model", False)]
         annotate_market_prices(items)
+
+        searches_list.append({
+            "id": s.name,
+            "name": s.name,
+            "query": s.title,
+            "title": s.title,
+            "city": s.city,
+            "minPrice": s.min_price,
+            "min_price": s.min_price,
+            "isActive": True,
+            "interval": "каждые 2 мин",
+        })
+        for it in items:
+            posted_ms = None
+            if getattr(it, "sort_timestamp", None):
+                try:
+                    posted_ms = int(it.sort_timestamp.timestamp() * 1000)
+                except Exception:
+                    posted_ms = None
+            seller_raw = (it.seller_type or "").lower()
+            lots_list.append({
+                "id": it.id,
+                "searchId": s.name,
+                "title": it.title,
+                "price": it.price,
+                "priceFormatted": it.price_formatted,
+                "price_drop": _lot_price_drop(it),
+                "seller_score": score_seller(it),
+                "market_min_price": getattr(it, "market_min_price", None),
+                "market_samples": getattr(it, "market_samples", None),
+                "is_repost": dedup.is_repost(s, it),
+                "marketPrice": it.market_price,
+                "marketDiffPercent": it.market_diff_percent,
+                "market_median": getattr(it, "market_median", None),
+                "recommended_buy": getattr(it, "recommended_buy", None),
+                "profit_abs": getattr(it, "profit_abs", None),
+                "profit_pct": getattr(it, "profit_pct", None),
+                "deal_badge": getattr(it, "deal_badge", None),
+                "url": it.url,
+                "avitoUrl": it.url,
+                "address": it.address,
+                "metro": it.metro,
+                "city": it.city,
+                "publishedText": it.published_text,
+                "postedAt": posted_ms,
+                "seller": {
+                    "name": it.seller_name,
+                    "type": "private" if "частн" in seller_raw else "company",
+                    "rating": it.seller_rating,
+                    "location": it.city or it.address,
+                },
+                "images": it.images[:4],
+                "description": it.description[:600],
+                "tags": list(it.tags),
+                "variant": getattr(it, "variant", None),
+                "realPriceInDesc": it.real_price_in_desc,
+                "isComboListing": it.is_combo_listing,
+                "is_defect": getattr(it, "is_defect", False),
+                "defect_type": getattr(it, "defect_type", None),
+                "delayed": str(it.id) in pending_ids,
+                "distance_km": lot_distance_km(home, getattr(it, "geo_lat", None), getattr(it, "geo_lon", None)),
+            })
 
         bundle[s.name] = {
             "name": s.name,
@@ -1129,6 +1968,18 @@ def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
                     "price_formatted": it.price_formatted,
                     "market_price": it.market_price,
                     "market_diff_percent": it.market_diff_percent,
+                    "market_median": getattr(it, "market_median", None),
+                    "recommended_buy": getattr(it, "recommended_buy", None),
+                    "profit_abs": getattr(it, "profit_abs", None),
+                    "profit_pct": getattr(it, "profit_pct", None),
+                    "deal_badge": getattr(it, "deal_badge", None),
+                    "price_drop": _lot_price_drop(it),
+                    "seller_score": score_seller(it),
+                    "market_min_price": getattr(it, "market_min_price", None),
+                    "market_samples": getattr(it, "market_samples", None),
+                    "is_repost": dedup.is_repost(s, it),
+                    "market_is_global": getattr(it, "market_is_global", False),
+                    "variant": getattr(it, "variant", None),
                     "real_price_in_desc": it.real_price_in_desc,
                     "is_combo_listing": it.is_combo_listing,
                     "is_in_desc_or_list": getattr(it, "is_in_desc_or_list", False),
@@ -1150,11 +2001,48 @@ def generate_api_bundle(user_id: str | int | None = None) -> dict[str, Any]:
                     "description": it.description[:600],
                     "tags": it.tags,
                     "badges": list(it.badges),
+                    "geo_lat": getattr(it, "geo_lat", None),
+                    "geo_lon": getattr(it, "geo_lon", None),
+                    "distance_km": lot_distance_km(home, getattr(it, "geo_lat", None), getattr(it, "geo_lon", None)),
                 }
                 for it in items
             ],
         }
+    bundle["searches"] = searches_list
+    bundle["lots"] = lots_list
     return bundle
+
+
+EXPORT_CSV_COLUMNS = ["id", "title", "price", "market_median", "profit_abs", "profit_pct",
+                      "deal_badge", "city", "distance_km", "published", "url"]
+
+
+def build_lots_csv(user_id: str | int) -> tuple[int, bytes]:
+    """PRO-only CSV export of the user's findings. Returns (http_status, body)."""
+    uid = str(user_id or "").strip()
+    if not users_store.is_pro(uid):
+        payload = {"status": "error", "message": "Экспорт доступен в PRO"}
+        return 403, json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    bundle = generate_api_bundle(user_id=uid)
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow(EXPORT_CSV_COLUMNS)
+    for lot in bundle.get("lots", []):
+        distance = lot.get("distance_km")
+        writer.writerow([
+            lot.get("id"),
+            lot.get("title") or "",
+            lot.get("price") if lot.get("price") is not None else "",
+            lot.get("market_median") if lot.get("market_median") is not None else "",
+            lot.get("profit_abs") if lot.get("profit_abs") is not None else "",
+            lot.get("profit_pct") if lot.get("profit_pct") is not None else "",
+            lot.get("deal_badge") or "",
+            lot.get("city") or "",
+            round(float(distance), 1) if isinstance(distance, (int, float)) else "",
+            lot.get("publishedText") or "",
+            lot.get("url") or "",
+        ])
+    return 200, buf.getvalue().encode("utf-8-sig")
 
 
 SUGGESTIONS_DB: list[dict[str, Any]] = [
@@ -1245,6 +2133,14 @@ def start_healthcheck_server() -> None:
                 or (query_params.get("tgWebAppData", [""])[0])
             )
             if init_data:
+                bot_token = str(os.environ.get("TELEGRAM_BOT_TOKEN", "")).strip()
+                verified_uid = verify_init_data(init_data, bot_token)
+                if verified_uid:
+                    return verified_uid
+                if bot_token:
+                    # initData передан, но подпись невалидна
+                    return "__invalid_init__"
+                # dev/legacy: токен не задан, подпись не проверяем
                 try:
                     parsed_qs = urllib.parse.parse_qs(init_data)
                     if "user" in parsed_qs:
@@ -1260,6 +2156,23 @@ def start_healthcheck_server() -> None:
             owner_id = str(os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
             return owner_id or "default"
 
+        def send_json(self, status: int, payload: dict[str, Any]) -> None:
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def send_error_json(self, status: int, message: str) -> None:
+            self.send_json(status, {"status": "error", "message": message})
+
+        def guard_invalid_init(self, uid: str) -> bool:
+            if uid == "__invalid_init__":
+                self.send_error_json(403, "invalid initData signature")
+                return True
+            return False
+
         def do_OPTIONS(self) -> None:
             self.send_response(200)
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -1272,6 +2185,16 @@ def start_healthcheck_server() -> None:
             path = parsed_url.path
             query_params = urllib.parse.parse_qs(parsed_url.query)
             uid = self.get_user_id(query_params)
+            if self.guard_invalid_init(uid):
+                return
+            if path == "/api/user/address":
+                try:
+                    users_store.clear_home_address(uid)
+                    self.send_json(200, {"ok": True})
+                except Exception as exc:
+                    logger.warning("Error clearing home address: %s", exc)
+                    self.send_error_json(500, str(exc))
+                return
             if path.startswith("/api/searches/"):
                 search_id = path.replace("/api/searches/", "").strip()
                 success = False
@@ -1292,6 +2215,8 @@ def start_healthcheck_server() -> None:
             path = parsed_url.path
             query_params = urllib.parse.parse_qs(parsed_url.query)
             uid = self.get_user_id(query_params)
+            if self.guard_invalid_init(uid):
+                return
 
             if path in ("/", "/index.html"):
                 html_path = Path("index.html") if Path("index.html").exists() else (Path("web/index.html") if Path("web/index.html").exists() else Path("frontend/index.html"))
@@ -1303,6 +2228,24 @@ def start_healthcheck_server() -> None:
                     self.end_headers()
                     self.wfile.write(data)
                     return
+
+            if path == "/api/export/lots.csv":
+                try:
+                    export_uid = (query_params.get("user_id", [""])[0] or uid).strip()
+                    status, body = build_lots_csv(export_uid)
+                    self.send_response(status)
+                    if status == 200:
+                        self.send_header("Content-Type", "text/csv; charset=utf-8")
+                        self.send_header("Content-Disposition", 'attachment; filename="nakhodki.csv"')
+                    else:
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(body)
+                except Exception as exc:
+                    logger.warning("Error exporting lots csv: %s", exc)
+                    self.send_error_json(500, str(exc))
+                return
 
             if path == "/api/bundle":
                 try:
@@ -1323,6 +2266,16 @@ def start_healthcheck_server() -> None:
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(b'{"status":"ok","service":"avitoradar-backend"}\n')
+                return
+
+            if path == "/api/user":
+                try:
+                    asked_uid = (query_params.get("user_id", [""])[0] or uid).strip()
+                    profile = build_user_block(asked_uid)
+                    self.send_json(200, {"status": "ok", "user": profile})
+                except Exception as exc:
+                    logger.warning("Error getting user profile: %s", exc)
+                    self.send_error_json(500, str(exc))
                 return
 
             if path == "/api/suggest":
@@ -1366,6 +2319,8 @@ def start_healthcheck_server() -> None:
                     search_id_filter = query_params.get("searchId", [""])[0].strip()
                     all_lots = []
                     for s_id, s_data in bundle.items():
+                        if s_id == "user" or not isinstance(s_data, dict):
+                            continue
                         if search_id_filter and search_id_filter != "all" and s_id != search_id_filter:
                             continue
                         for it in s_data.get("items", []):
@@ -1377,6 +2332,14 @@ def start_healthcheck_server() -> None:
                                 "price": it["price"],
                                 "marketPrice": it.get("market_price", 0),
                                 "discount": it.get("market_diff_percent", 0),
+                                "marketMedian": it.get("market_median"),
+                                "recommendedBuy": it.get("recommended_buy"),
+                                "profitAbs": it.get("profit_abs"),
+                                "profitPct": it.get("profit_pct"),
+                                "dealBadge": it.get("deal_badge"),
+                                "variant": it.get("variant"),
+                                "marketSamples": it.get("market_samples"),
+                                "marketIsGlobal": it.get("market_is_global", False),
                                 "seller": {
                                     "name": it.get("seller_name", "Частник"),
                                     "type": "business" if "Магазин" in it.get("seller_type", "") else "private",
@@ -1462,6 +2425,157 @@ def start_healthcheck_server() -> None:
             except Exception:
                 pass
             uid = self.get_user_id(query_params, req_data)
+            if self.guard_invalid_init(uid):
+                return
+
+            if path == "/api/user/address":
+                try:
+                    addr = str(req_data.get("address") or "").strip()
+                    addr_uid = str(req_data.get("user_id") or uid).strip()
+                    if not addr:
+                        users_store.clear_home_address(addr_uid)
+                        self.send_json(200, {"ok": True, "cleared": True})
+                        return
+                    city_hint = ""
+                    try:
+                        own_searches = list_searches(user_id=addr_uid)
+                        if own_searches and own_searches[0].city:
+                            city_hint = own_searches[0].city
+                    except Exception:
+                        city_hint = ""
+                    geo = geocode_address(addr, city=city_hint or None)
+                    if not geo:
+                        self.send_json(422, {"status": "error", "message": "Адрес не найден, уточните улицу и город"})
+                        return
+                    users_store.set_home_address(addr_uid, geo["display_name"], geo["lat"], geo["lon"])
+                    self.send_json(200, {
+                        "ok": True,
+                        "display_name": geo["display_name"],
+                        "lat": geo["lat"],
+                        "lon": geo["lon"],
+                    })
+                except Exception as exc:
+                    logger.warning("Error setting home address: %s", exc)
+                    self.send_error_json(500, str(exc))
+                return
+
+            if path == "/api/user/quiet_hours":
+                try:
+                    q_uid = str(req_data.get("user_id") or uid).strip()
+                    if q_uid in ("", "default"):
+                        self.send_error_json(400, "user_id required")
+                        return
+                    enabled = bool(req_data.get("enabled"))
+                    start = int(req_data.get("start", 23))
+                    end = int(req_data.get("end", 8))
+                    users_store.set_quiet_hours(q_uid, enabled, start, end)
+                    self.send_json(200, {"ok": True})
+                except (TypeError, ValueError) as exc:
+                    self.send_error_json(400, f"invalid quiet hours: {exc}")
+                except Exception as exc:
+                    logger.warning("Error setting quiet hours: %s", exc)
+                    self.send_error_json(500, str(exc))
+                return
+
+            if path == "/api/pay/stars":
+                try:
+                    plan_id = str(req_data.get("plan_id") or "").strip()
+                    pay_uid = str(req_data.get("user_id") or uid).strip()
+                    bot_token = str(os.environ.get("TELEGRAM_BOT_TOKEN", "")).strip()
+                    if not billing.get_plan(plan_id):
+                        self.send_error_json(400, "unknown plan_id")
+                        return
+                    link = billing.create_stars_invoice_link(bot_token, pay_uid, plan_id)
+                    if not link:
+                        self.send_error_json(502, "failed to create invoice link")
+                        return
+                    self.send_json(200, {"status": "ok", "invoice_link": link})
+                except Exception as exc:
+                    logger.warning("Error creating stars invoice: %s", exc)
+                    self.send_error_json(500, str(exc))
+                return
+
+            if path == "/api/pay/yookassa":
+                try:
+                    plan_id = str(req_data.get("plan_id") or "").strip()
+                    pay_uid = str(req_data.get("user_id") or uid).strip()
+                    if not billing.get_plan(plan_id):
+                        self.send_error_json(400, "unknown plan_id")
+                        return
+                    if not (os.environ.get("YOOKASSA_SHOP_ID", "").strip() and os.environ.get("YOOKASSA_SECRET", "").strip()):
+                        self.send_error_json(501, "yookassa not configured")
+                        return
+                    payment_url = billing.get_yookassa_payment_url(pay_uid, plan_id)
+                    if not payment_url:
+                        self.send_error_json(502, "failed to create payment")
+                        return
+                    self.send_json(200, {"status": "ok", "payment_url": payment_url})
+                except Exception as exc:
+                    logger.warning("Error creating yookassa payment: %s", exc)
+                    self.send_error_json(500, str(exc))
+                return
+
+            if path == "/api/trial":
+                try:
+                    trial_uid = str(req_data.get("user_id") or uid).strip()
+                    if trial_uid == "default":
+                        self.send_error_json(400, "user_id required")
+                        return
+                    result = users_store.grant_trial(trial_uid)
+                    if result["ok"]:
+                        self.send_json(200, {
+                            "status": "ok",
+                            "ok": True,
+                            "pro_expires_at": result["user"].get("pro_expires_at"),
+                        })
+                    else:
+                        self.send_json(200, {"status": "ok", "ok": False, "reason": result["reason"]})
+                except Exception as exc:
+                    logger.warning("Error granting trial: %s", exc)
+                    self.send_error_json(500, str(exc))
+                return
+
+            if path == "/api/analysis":
+                try:
+                    an_uid = str(req_data.get("user_id") or uid).strip()
+                    if an_uid == "default":
+                        self.send_error_json(400, "user_id required")
+                        return
+                    allowed = users_store.use_analysis(an_uid)
+                    if not allowed["allowed"]:
+                        self.send_json(429, {
+                            "status": "error",
+                            "message": f"Лимит бесплатного тарифа: {allowed['limit']} анализа рынка в сутки. Оформите PRO для безлимита.",
+                            "used": allowed["used"],
+                            "limit": allowed["limit"],
+                        })
+                        return
+                    search_name = str(req_data.get("search_name") or req_data.get("search") or "").strip()
+                    query = str(req_data.get("query") or "").strip()
+                    analysis = analyze_market_for(query=query, search_name=search_name, user_id=an_uid)
+                    if not analysis:
+                        self.send_error_json(404, "search or listings not found")
+                        return
+                    analysis["status"] = "ok"
+                    analysis["analysis_used_today"] = allowed["used"]
+                    analysis["analysis_limit"] = allowed["limit"]
+                    self.send_json(200, analysis)
+                except Exception as exc:
+                    logger.warning("Error running analysis: %s", exc)
+                    self.send_error_json(500, str(exc))
+                return
+
+            if path == "/webhook/yookassa":
+                try:
+                    result = billing.process_yookassa_webhook(req_data)
+                    if result["ok"]:
+                        self.send_json(200, {"status": "ok", "message": result["message"]})
+                    else:
+                        self.send_json(400, {"status": "error", "message": result["message"]})
+                except Exception as exc:
+                    logger.warning("Error processing yookassa webhook: %s", exc)
+                    self.send_error_json(500, str(exc))
+                return
 
             if path in ("/api/searches", "/api/searches/create"):
                 try:
@@ -1505,6 +2619,10 @@ def start_healthcheck_server() -> None:
 
                         s_rec = load_search(c_name)
                         if not s_rec:
+                            limit = users_store.get_limits(uid)["max_searches"]
+                            if uid not in ("default", "") and len(list_searches(user_id=uid)) >= limit:
+                                self.send_error_json(403, f"Достигнут лимит радаров вашего тарифа ({limit}). Оформите PRO.")
+                                return
                             s_rec = SearchRecord(
                                 name=c_name,
                                 title=query,

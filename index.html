@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>AvitoRadar — Мониторинг выгодных предложений на Авито</title>
+  <title>AvitoRadar - Мониторинг выгодных предложений на Авито</title>
 
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -14,15 +14,12 @@
         tg.ready();
         const p = (tg.platform || '').toLowerCase();
         const isMobile = ['ios', 'android'].includes(p) || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        if (!isMobile) {
-          // On PC / Desktop: Expand to full screen width immediately!
-          if (typeof tg.requestFullscreen === 'function') {
-            try { tg.requestFullscreen(); } catch (_) {}
-          }
-          try { tg.expand(); } catch (_) {}
-        } else {
-          // On Mobile: Only expand natively (no forced fullscreen to avoid notch/header bugs)
-          try { tg.expand(); } catch (_) {}
+        if (!isMobile && typeof tg.requestFullscreen === 'function') {
+          try { tg.requestFullscreen(); } catch (_) {}
+        }
+        try { tg.expand(); } catch (_) {}
+        if (typeof tg.disableVerticalSwipes === 'function') {
+          try { tg.disableVerticalSwipes(); } catch (_) {}
         }
       }
     } catch (_) {}
@@ -33,56 +30,34 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 
-  <!-- Production CSS Stylesheet -->
-  <link rel="stylesheet" href="css/styles.css?v=loft13">
+  <link rel="stylesheet" href="css/styles.css?v=pro2">
 </head>
 <body>
 
-  <!-- Toast Notification Container -->
+  <!-- Toast container -->
   <div id="toastContainer" class="toast-container"></div>
 
-  <!-- Header Component (64px) -->
+  <!-- Header -->
   <header class="app-header">
-    <a href="#" class="brand-block" onclick="event.preventDefault(); window.app.setViewMode('cards')">
-      <div class="radar-logo" title="AvitoRadar">
-        <img src="avatar.jpg" alt="AvitoRadar" class="radar-logo-img" onerror="this.onerror=null; this.parentElement.innerHTML='<svg width=\'18\' height=\'18\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><circle cx=\'12\' cy=\'12\' r=\'9\'/><path d=\'M12 3v18M3 12h18\'/><circle cx=\'12\' cy=\'12\' r=\'3\'/></svg>'">
+    <a href="#" class="brand-block" onclick="event.preventDefault(); window.app.switchTab('radars')">
+      <div class="radar-logo">
+        <img src="avatar.jpg" alt="AvitoRadar" onerror="this.onerror=null; this.outerHTML='<svg width=\'18\' height=\'18\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.75\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><circle cx=\'12\' cy=\'12\' r=\'10\'/><circle cx=\'12\' cy=\'12\' r=\'6\'/><circle cx=\'12\' cy=\'12\' r=\'2\'/></svg>'">
       </div>
       <div>
-        <div class="brand-title">
-          <span>AvitoRadar</span>
-          <span class="brand-badge">LOFT</span>
-        </div>
-        <div class="status-badge">
-          <span class="status-dot"></span>
-          <span>Мониторинг 24/7</span>
-        </div>
+        <div class="brand-title"><span>AvitoRadar</span></div>
+        <div class="brand-sub"><span class="status-dot"></span><span>Мониторинг 24/7</span></div>
       </div>
     </a>
 
-    <!-- Top Action Buttons -->
     <div style="display: flex; align-items: center; gap: 8px;">
-      <button class="filter-chip" onclick="window.app.setViewMode('searches')" style="height: 36px; padding: 0 12px;" title="Мои поиски">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <circle cx="12" cy="12" r="6"/>
-          <circle cx="12" cy="12" r="2"/>
-        </svg>
-        <span style="font-weight: 600;">Поиски</span>
-      </button>
-
-      <button id="btnHeaderNewSearch" class="btn-cta" onclick="window.app.openNewSearchModal()" style="height: 36px; padding: 0 14px; border-radius: 18px; font-size: 12px; width: auto;">
-        <span>+</span>
-        <span>Новый поиск</span>
-      </button>
-
-      <button id="btnFullscreen" class="btn-vanish" onclick="window.app.toggleFullscreen()" style="width: 36px; height: 36px; background: var(--surface-card); border: 1px solid var(--border-subtle); display: none;" title="На весь экран">
-        <svg id="fullscreenIconExpand" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <button id="headerPlanBadge" class="plan-badge" onclick="window.app.switchTab('pro')">FREE</button>
+      <button id="btnFullscreen" class="icon-btn" onclick="window.app.toggleFullscreen()" style="display: none;" title="На весь экран">
+        <svg id="fullscreenIconExpand" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
           <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
         </svg>
       </button>
-
-      <button id="btnRefresh" class="btn-vanish" style="width: 36px; height: 36px; background: var(--surface-card); border: 1px solid var(--border-subtle);" title="Синхронизировать">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <button id="btnRefresh" class="icon-btn" title="Синхронизировать">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 4 23 10 17 10"></polyline>
           <polyline points="1 20 1 14 7 14"></polyline>
           <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
@@ -91,272 +66,42 @@
     </div>
   </header>
 
-  <!-- Sticky Filter Bar -->
-  <section class="filter-bar-sticky">
-    <!-- Controls Row 1: Search Scope & Sort -->
-    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-      <div style="flex: 1; display: flex; align-items: center; gap: 6px;">
-        <select id="searchSelector" class="form-select" style="height: 38px; font-size: 12px; font-weight: 600; padding: 0 28px 0 10px; flex: 1;">
-          <option value="">✨ Нажмите «Новый поиск»</option>
-        </select>
-        <button id="btnDeleteCurrentSearch" class="btn-delete-search hidden" onclick="window.app.promptDeleteCurrent()" title="Удалить выбранный радар">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-          </svg>
-        </button>
-      </div>
+  <main class="app-main">
 
-      <div style="width: 140px; flex-shrink: 0;">
-        <select id="sortSelector" class="form-select font-mono" style="height: 38px; font-size: 11px; padding: 0 24px 0 8px;">
-          <option value="deal">По выгоде (%)</option>
-          <option value="cheap">Сначала дешевле</option>
-          <option value="expensive">Сначала дороже</option>
-          <option value="date">Сначала новые</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Controls Row 2: Segmented View Toggle -->
-    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-      <div class="segmented-toggle" style="flex: 1; max-width: 480px; justify-content: space-between;">
-        <button id="tab-cards" class="segmented-btn active" onclick="window.app.setViewMode('cards')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg> Карточки
-        </button>
-        <button id="tab-table" class="segmented-btn" onclick="window.app.setViewMode('table')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></svg> Таблица
-        </button>
-        <button id="tab-fav" class="segmented-btn" onclick="window.app.setViewMode('fav')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Fav <span id="favCount" style="color: var(--warning); font-size: 10px; font-weight: 700;">0</span>
-        </button>
-        <button id="tab-searches" class="segmented-btn" onclick="window.app.setViewMode('searches')">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Радары
-        </button>
-      </div>
-    </div>
-
-    <!-- Keyword Filter Row -->
-    <div style="position: relative; display: flex; align-items: center;">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; left: 12px; pointer-events: none;">
-        <circle cx="11" cy="11" r="8"></circle>
-        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-      </svg>
-      <input type="text" id="filterInput" placeholder="Быстрый фильтр по ключевым словам, продавцу, адресу..." class="form-input" style="height: 36px; padding-left: 34px; padding-right: 32px; font-size: 12px;" autocomplete="off">
-      <button id="btnClearFilter" class="btn-vanish hidden" style="position: absolute; right: 4px; width: 28px; height: 28px; font-size: 12px;">✕</button>
-      <div id="filterSuggestionsDropdown" class="suggestions-dropdown hidden" style="top: 42px;"></div>
-    </div>
-
-    <!-- Chips Row -->
-    <div id="filterChipsRow" class="filter-chips-row no-scrollbar">
-      <button id="chip-all" class="filter-chip active" onclick="window.app.setFilterChip('all')">
-        Все
-      </button>
-      <button id="chip-noaccessories" class="filter-chip" onclick="window.app.setFilterChip('noaccessories')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/></svg> Без аксессуаров
-      </button>
-      <button id="chip-deals" class="filter-chip" onclick="window.app.setFilterChip('deals')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 12-7 7-7-7M19 5l-7 7-7-7"/></svg> Только выгода
-      </button>
-      <button id="chip-private" class="filter-chip" onclick="window.app.setFilterChip('private')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Частники
-      </button>
-      <button id="chip-delivery" class="filter-chip" onclick="window.app.setFilterChip('delivery')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg> Доставка
-      </button>
-      <button id="chip-nodefects" class="filter-chip" onclick="window.app.setFilterChip('nodefects')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Без дефектов
-      </button>
-      <button id="chip-dismissed" class="filter-chip" onclick="window.app.setFilterChip('dismissed')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 20 20M9.88 9.88a3 3 0 1 0 4.24 4.24M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/></svg> Скрытые (<span id="dismissedCount">0</span>)
-      </button>
-    </div>
-  </section>
-
-  <!-- Stats Cards (2-4 Columns) -->
-  <section id="statsGrid" class="stats-grid">
-    <!-- Stat 1: Market Median -->
-    <div class="stat-card">
-      <div class="stat-label">
-        <span>Рыночная цена</span>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
-      </div>
-      <div id="statMedianPrice" class="stat-value">—</div>
-      <div class="stat-subtext">честная медиана рынка</div>
-    </div>
-
-    <!-- Stat 2: Super Deals -->
-    <div class="stat-card">
-      <div class="stat-label">
-        <span>Супер-цены</span>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-      </div>
-      <div id="statDealsCount" class="stat-value" style="color: var(--success);">0</div>
-      <div class="stat-subtext">предложений ниже рынка</div>
-    </div>
-
-    <!-- Stat 3: Top Discount -->
-    <div class="stat-card">
-      <div class="stat-label">
-        <span>Макс. выгода</span>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
-      </div>
-      <div id="statTopDiscount" class="stat-value" style="color: var(--success);">0%</div>
-      <div class="stat-subtext">лучшая скидка в потоке</div>
-    </div>
-
-    <!-- Stat 4: Active Radars -->
-    <div class="stat-card">
-      <div class="stat-label">
-        <span>Активные радары</span>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-      </div>
-      <div id="statActiveRadars" class="stat-value">3</div>
-      <div class="stat-subtext">отслеживание 24/7</div>
-    </div>
-  </section>
-
-  <!-- Main Feed: Lots Cards Grid -->
-  <main id="lotsContainer" class="lots-container">
-    <!-- Populated by JavaScript -->
-  </main>
-
-  <!-- Table View Container -->
-  <section id="tableWrapper" class="table-wrapper hidden">
-    <div style="overflow-x: auto;" class="no-scrollbar">
-      <table class="excel-table">
-        <thead>
-          <tr>
-            <th>Товар / Лот</th>
-            <th>Цена</th>
-            <th>Рынок</th>
-            <th>Выгода</th>
-            <th>Продавец</th>
-            <th style="text-align: right;">Действия</th>
-          </tr>
-        </thead>
-        <tbody id="tableBody">
-          <!-- Populated by JavaScript -->
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <!-- Searches Manager Section -->
-  <section id="searchesSection" class="hidden" style="padding: 10px 16px 90px;">
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-      <div>
-        <h2 class="h2">Менеджер радаров</h2>
-        <p class="caption">Управляйте отслеживаемыми запросами на Авито</p>
-      </div>
-      <button class="btn-cta" onclick="window.app.openNewSearchModal()" style="height: 38px; width: auto; padding: 0 16px;">
-        + Добавить радар
-      </button>
-    </div>
-
-    <div id="searchesList">
-      <!-- Populated by JavaScript -->
-    </div>
-  </section>
-
-  <!-- Empty State Placeholder -->
-  <div id="emptyState" class="hidden" style="text-align: center; padding: 60px 20px; max-width: 380px; margin: 0 auto;">
-    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.5; margin-bottom: 14px; margin-inline: auto;">
-      <circle cx="11" cy="11" r="8"></circle>
-      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-    </svg>
-    <div class="h3" style="margin-bottom: 8px;">Нет подходящих объявлений</div>
-    <p class="caption" style="margin-bottom: 20px; line-height: 1.5;">Попробуйте сбросить фильтры или добавьте новый поисковый запрос в радар.</p>
-    <button class="filter-chip" onclick="window.app.setFilterChip('all')" style="margin: 0 auto; border-color: var(--primary); color: #A5B4FC;">
-      Сбросить фильтры
-    </button>
-  </div>
-
-  <!-- Modal Backdrop Overlay -->
-  <div id="modalOverlay" class="modal-overlay"></div>
-
-  <!-- Bottom Sheet: Lot Details -->
-  <div id="bottomSheet" class="bottom-sheet">
-    <div class="sheet-handle-bar" onclick="window.app.closeAllModals()">
-      <div class="sheet-handle"></div>
-    </div>
-    <div class="sheet-content">
-      <div style="position: relative; max-width: 440px; margin: 0 auto 16px; aspect-ratio: 16/10; border-radius: 14px; overflow: hidden; background: #08080A; display: flex; align-items: center; justify-content: center;">
-        <img id="modalMainImg" src="" alt="" style="max-height: 260px; max-width: 100%; object-fit: contain;">
-      </div>
-
-      <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px;" class="font-mono">
-        <div id="modalPrice" style="font-size: 26px; font-weight: 700; color: var(--text-primary);"></div>
-        <div id="modalDiscount" class="deal-badge" style="font-size: 13px;"></div>
-      </div>
-      <div id="modalMarketPrice" class="caption font-mono" style="margin-bottom: 12px;"></div>
-
-      <h2 id="modalTitle" class="h3" style="margin-bottom: 14px; line-height: 1.4;"></h2>
-
-      <div id="modalTags" style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px;"></div>
-
-      <div class="stat-card" style="margin-bottom: 16px; padding: 14px;">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <div>
-            <div id="modalSellerName" style="font-weight: 600; color: var(--text-primary);"></div>
-            <div id="modalSellerType" class="caption"></div>
-          </div>
-          <span id="modalSellerRating" class="deal-badge" style="background: var(--warning-bg); color: var(--warning); border-color: rgba(245,158,11,0.3)">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            <span id="modalSellerRatingVal">5.0</span>
-          </span>
+    <!-- Screen: Radars -->
+    <section id="screen-radars" class="screen active">
+      <div class="section-head">
+        <div>
+          <h1 class="h2">Радары</h1>
+          <p class="caption">Отслеживание выгодных лотов на Авито</p>
         </div>
-        <div style="border-top: 1px solid rgba(255,255,255,0.06); margin-top: 10px; padding-top: 8px; display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary);" class="font-mono">
-          <span id="modalLocation">Челябинск</span>
-          <span id="modalDate">сегодня</span>
+      </div>
+      <div id="radarsLimitCard" class="card limit-card hidden" style="margin-bottom: 12px;"></div>
+      <div id="radarsList" class="stack"></div>
+    </section>
+
+    <!-- Screen: Analysis -->
+    <section id="screen-analysis" class="screen">
+      <div class="section-head">
+        <div>
+          <h1 class="h2">Оценка рынка</h1>
+          <p class="caption">Честная медиана и цена выкупа по любому товару</p>
         </div>
       </div>
 
-      <div style="margin-bottom: 20px;">
-        <div class="caption" style="text-transform: uppercase; font-weight: 600; margin-bottom: 6px;">Описание лота</div>
-        <div id="modalDescription" style="font-size: 13px; color: var(--text-secondary); line-height: 1.6; white-space: pre-wrap; background: #08080A; padding: 14px; border-radius: 12px; border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
-      </div>
-
-      <button id="modalAvitoCta" class="btn-cta" style="height: 48px; font-size: 14px;">
-        <span>ОТКРЫТЬ НА АВИТО</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-          <polyline points="15 3 21 3 21 9"></polyline>
-          <line x1="10" y1="14" x2="21" y2="3"></line>
-        </svg>
-      </button>
-    </div>
-  </div>
-
-  <!-- Bottom Sheet: New Search Modal -->
-  <div id="newSearchModal" class="bottom-sheet">
-    <div class="sheet-handle-bar" onclick="window.app.closeAllModals()">
-      <div class="sheet-handle"></div>
-    </div>
-    <div class="sheet-content">
-      <div style="margin-bottom: 16px;">
-        <h2 class="h2">Создать новый радар</h2>
-        <p class="caption">Бот начнет круглосуточный мониторинг объявлений по заданному запросу</p>
-      </div>
-
-      <form id="formNewSearch">
-        <div class="form-group" style="position: relative;">
-          <label class="form-label">Товар или поисковый запрос (с подсказками моделей и комплектаций)</label>
-          <div style="position: relative;">
-            <input type="text" id="newQueryInput" placeholder="Например: BMW 3, Lada Vesta, Camry, iPhone 15, RTX 4070" class="form-input" required autocomplete="off">
-            <div id="querySuggestionsDropdown" class="suggestions-dropdown hidden"></div>
-          </div>
-          <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
-            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('гравел', 25000)">🚲 Гравел</button>
-            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('Lada Vesta', 600000)">Lada Vesta</button>
-            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('BMW 320d', 1800000)">BMW 320d</button>
-            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('Toyota Camry', 1800000)">Camry</button>
-            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('iPhone 15', 55000)">iPhone 15</button>
-            <button type="button" class="filter-chip" style="height: 26px; font-size: 11px;" onclick="window.app.setQueryPreset('RTX 4070', 45000)">RTX 4070</button>
-          </div>
-        </div>
-
+      <form id="formAnalysis" class="card" style="margin-bottom: 12px;">
         <div class="form-group">
-          <label class="form-label">Город / Регион</label>
-          <select id="newCitySelect" class="form-select">
+          <label class="form-label" for="analysisQuery">Что оцениваем</label>
+          <div class="input-icon-wrap">
+            <span class="input-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </span>
+            <input type="text" id="analysisQuery" class="input" placeholder="Например: iPhone 15 Pro 256 ГБ" autocomplete="off" required>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label class="form-label" for="analysisCity">Регион</label>
+          <select id="analysisCity" class="select">
             <option value="chelyabinsk">Челябинск</option>
             <option value="moskva">Москва</option>
             <option value="sankt-peterburg">Санкт-Петербург</option>
@@ -364,101 +109,315 @@
             <option value="kazan">Казань</option>
             <option value="novosibirsk">Новосибирск</option>
             <option value="ufa">Уфа</option>
-            <option value="rossiya">Вся Россия</option>
+            <option value="rossiya" selected>Вся Россия</option>
           </select>
         </div>
-
-
-        <!-- Price floor: SL UI Library "Price range" slider (matte-range-slider), MIT © SLtowl -->
-        <div class="form-group" style="margin-top: 12px;">
-          <fieldset class="sl-slider" data-slider="range" style="--low: 0%; --high: 0%;">
-            <legend class="slider-sr">Минимальная цена лота</legend>
-            <div class="slider-header">
-              <span>Минимальная цена</span>
-              <output class="font-mono" for="newMinPrice" data-output>без порога</output>
-            </div>
-            <div class="slider-track">
-              <span class="slider-rail" aria-hidden="true"><span class="slider-fill"></span></span>
-              <input class="slider-input" id="newMinPrice" name="newMinPrice" type="range" min="0" max="300000" step="1000" value="0" aria-label="Минимальная цена лота">
-            </div>
-            <div class="slider-ends"><span>0 ₽</span><span>300 000 ₽</span></div>
-          </fieldset>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px;">
+          <span id="analysisRemaining" class="caption-dim mono"></span>
         </div>
-
-        <!-- Accessories switch: SL UI Library "Notifications" toggle (matte-glide-toggle), MIT © SLtowl -->
-        <div class="form-group sl-toggle" id="excludeAccessoriesToggle" data-checked="true" style="margin-top: 10px;">
-          <label class="sl-toggle__label" for="newExcludeAccessories">
-            <span class="sl-toggle__copy">
-              <span class="sl-toggle__title">🛡️ Исключать аксессуары и запчасти</span>
-              <span class="sl-toggle__status" data-status>Включено</span>
-            </span>
-            <span class="sl-toggle__hint">Скрывать покрышки, сидушки, чехлы и расходники, чтобы не ломать медиану цен</span>
-          </label>
-          <span class="sl-toggle__switch">
-            <input class="sl-toggle__input" id="newExcludeAccessories" type="checkbox" checked data-on="Включено" data-off="Выключено">
-            <span class="sl-toggle__track" aria-hidden="true">
-              <span class="sl-toggle__thumb"><span class="sl-toggle__dot"></span></span>
-            </span>
-          </span>
-        </div>
-
-        <button type="submit" class="btn-cta" style="height: 48px; font-size: 14px; margin-top: 18px;">
-          <span>ЗАПУСТИТЬ РАДАР</span>
+        <button type="submit" id="btnAnalysisSubmit" class="btn btn-accent">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+          <span>Оценить рынок</span>
         </button>
       </form>
-    </div>
-  </div>
 
-  <!-- Delete Confirm Modal -->
-  <div id="deleteModal" class="bottom-sheet">
-    <div class="sheet-handle-bar" onclick="window.app.closeAllModals()">
-      <div class="sheet-handle"></div>
+      <div id="analysisSkeleton" class="hidden">
+        <div class="card">
+          <div class="skeleton sk-line w40" style="margin: 0 0 10px;"></div>
+          <div class="skeleton" style="height: 34px; width: 60%; margin-bottom: 14px;"></div>
+          <div class="analysis-grid">
+            <div class="skeleton" style="height: 58px;"></div>
+            <div class="skeleton" style="height: 58px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="analysisResult"></div>
+    </section>
+
+    <!-- Screen: Feed -->
+    <section id="screen-feed" class="screen">
+      <div class="section-head">
+        <div>
+          <h1 class="h2">Лента находок</h1>
+          <p class="caption">Свежие выгодные объявления по вашим радарам</p>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+        <select id="feedSearchSelect" class="select mono" style="flex: 1.5; height: 38px; font-size: 12px;"></select>
+        <select id="feedSortSelect" class="select mono" style="flex: 1; height: 38px; font-size: 12px;">
+          <option value="deal">По выгоде</option>
+          <option value="cheap">Дешевле</option>
+          <option value="expensive">Дороже</option>
+          <option value="date">Новые</option>
+        </select>
+        <button id="btnExportCsv" class="btn btn-ghost" style="flex: 0 0 auto; height: 38px; padding: 0 12px; font-size: 12px;" onclick="window.app.exportLotsCsv()" title="Экспорт в CSV">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Экспорт</span>
+        </button>
+      </div>
+
+      <div class="input-icon-wrap" style="margin-bottom: 8px;">
+        <span class="input-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </span>
+        <input type="text" id="feedFilterInput" class="input" style="height: 38px; font-size: 12px;" placeholder="Фильтр по словам, продавцу, адресу..." autocomplete="off">
+        <div id="feedFilterDropdown" class="suggestions-dropdown hidden"></div>
+      </div>
+
+      <div id="feedChips" class="chips-row no-scrollbar">
+        <button class="chip active" data-chip="all" onclick="window.app.setFeedChip('all')">Все</button>
+        <button class="chip" data-chip="deals" onclick="window.app.setFeedChip('deals')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+          Выгодные
+        </button>
+        <button class="chip" data-chip="private" onclick="window.app.setFeedChip('private')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Частные
+        </button>
+        <button class="chip" data-chip="nodefects" onclick="window.app.setFeedChip('nodefects')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          Без дефектов
+        </button>
+        <button class="chip" data-chip="dismissed" onclick="window.app.setFeedChip('dismissed')">
+          Скрытые <span id="dismissedCount" class="mono">0</span>
+        </button>
+      </div>
+
+      <div id="feedAddressHint" class="feed-address-hint hidden"></div>
+      <div id="feedList"></div>
+      <div id="feedEmpty" class="hidden"></div>
+    </section>
+
+    <!-- Screen: PRO / Profile -->
+    <section id="screen-pro" class="screen">
+      <div class="section-head">
+        <div>
+          <h1 class="h2">PRO</h1>
+          <p class="caption">Тариф, лимиты и реферальная программа</p>
+        </div>
+      </div>
+      <div id="proContent" class="stack"></div>
+    </section>
+
+  </main>
+
+  <!-- FAB: create radar -->
+  <button id="fabAddRadar" class="fab" onclick="window.app.openRadarSheet()" title="Новый радар">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </button>
+
+  <!-- Bottom navigation -->
+  <nav class="bottom-nav">
+    <div class="bottom-nav-inner">
+      <button class="nav-item active" data-tab="radars" onclick="window.app.switchTab('radars')">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        <span>Радары</span>
+      </button>
+      <button class="nav-item" data-tab="analysis" onclick="window.app.switchTab('analysis')">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+        <span>Оценка</span>
+      </button>
+      <button class="nav-item" data-tab="feed" onclick="window.app.switchTab('feed')">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        <span>Лента</span>
+        <span id="feedNavDot" class="nav-dot hidden"></span>
+      </button>
+      <button class="nav-item" data-tab="pro" onclick="window.app.switchTab('pro')">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11.6 3.3a.5.5 0 0 1 .8 0l2.9 5.5a1 1 0 0 0 1.5.3l4.3-3.6a.5.5 0 0 1 .8.5L19 16.2a1 1 0 0 1-1 .8H6a1 1 0 0 1-1-.8L2.1 6a.5.5 0 0 1 .8-.5l4.3 3.6a1 1 0 0 0 1.5-.3z"/><path d="M5 21h14"/></svg>
+        <span>PRO</span>
+      </button>
     </div>
-    <div class="sheet-content" style="text-align: center; padding: 24px 20px;">
-      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 12px; margin-inline: auto;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <h2 class="h2" style="margin-bottom: 6px;">Удалить этот радар?</h2>
-      <p class="caption" style="margin-bottom: 20px;">Вы собираетесь удалить поиск «<b id="deleteSearchTitle" style="color: var(--text-primary);"></b>». Мониторинг новых лотов по нему прекратится.</p>
-      <div style="display: flex; gap: 10px;">
-        <button class="filter-chip" onclick="window.app.closeAllModals()" style="flex: 1; height: 44px; justify-content: center; font-size: 13px;">Отмена</button>
-        <button id="btnConfirmDelete" class="btn-cta" style="flex: 1; height: 44px; background: var(--danger); font-size: 13px;">Да, удалить</button>
+  </nav>
+
+  <!-- Sheet backdrop -->
+  <div id="sheetBackdrop" class="sheet-backdrop" onclick="window.app.closeSheets()"></div>
+
+  <!-- Sheet: create radar -->
+  <div id="sheetRadar" class="sheet">
+    <div class="sheet-handle-bar"><div class="sheet-handle"></div></div>
+    <div class="sheet-content">
+      <div id="radarSheetMain">
+        <div class="sheet-title-row">
+          <h2 class="h2">Новый радар</h2>
+          <p class="caption">Бот начнет круглосуточный мониторинг объявлений по запросу</p>
+        </div>
+
+        <form id="formNewSearch">
+          <div class="form-group">
+            <label class="form-label" for="newQueryInput">Товар или поисковый запрос</label>
+            <div style="position: relative;">
+              <input type="text" id="newQueryInput" class="input" placeholder="Например: iPhone 15, RTX 4070, Lada Vesta" required autocomplete="off">
+              <div id="querySuggestionsDropdown" class="suggestions-dropdown hidden"></div>
+            </div>
+            <div class="preset-row">
+              <button type="button" class="chip" onclick="window.app.setQueryPreset('iPhone 15', 40000)">iPhone 15</button>
+              <button type="button" class="chip" onclick="window.app.setQueryPreset('RTX 4070', 35000)">RTX 4070</button>
+              <button type="button" class="chip" onclick="window.app.setQueryPreset('PlayStation 5', 25000)">PS5</button>
+              <button type="button" class="chip" onclick="window.app.setQueryPreset('Lada Vesta', 600000)">Lada Vesta</button>
+              <button type="button" class="chip" onclick="window.app.setQueryPreset('DDR5 32GB', 8000)">DDR5 32GB</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="newCitySelect">Город / Регион</label>
+            <select id="newCitySelect" class="select">
+              <option value="chelyabinsk">Челябинск</option>
+              <option value="moskva">Москва</option>
+              <option value="sankt-peterburg">Санкт-Петербург</option>
+              <option value="ekaterinburg">Екатеринбург</option>
+              <option value="kazan">Казань</option>
+              <option value="novosibirsk">Новосибирск</option>
+              <option value="ufa">Уфа</option>
+              <option value="rossiya">Вся Россия</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <fieldset class="sl-slider" data-slider="range" style="--low: 0%; --high: 0%;">
+              <legend class="slider-sr">Минимальная цена лота</legend>
+              <div class="slider-header">
+                <span>Минимальная цена</span>
+                <output class="mono" for="newMinPrice" data-output>без порога</output>
+              </div>
+              <div class="slider-track">
+                <span class="slider-rail" aria-hidden="true"><span class="slider-fill"></span></span>
+                <input class="slider-input" id="newMinPrice" name="newMinPrice" type="range" min="0" max="300000" step="1000" value="0" aria-label="Минимальная цена лота">
+              </div>
+              <div class="slider-ends"><span>0 ₽</span><span>300 000 ₽</span></div>
+            </fieldset>
+          </div>
+
+          <div class="form-group sl-toggle" id="excludeAccessoriesToggle" data-checked="true">
+            <label class="sl-toggle__label" for="newExcludeAccessories">
+              <span class="sl-toggle__copy">
+                <span class="sl-toggle__title">Исключать аксессуары и запчасти</span>
+                <span class="sl-toggle__status" data-status>Включено</span>
+              </span>
+              <span class="sl-toggle__hint">Скрывать чехлы, расходники и запчасти, чтобы не ломать медиану цен</span>
+            </label>
+            <span class="sl-toggle__switch">
+              <input class="sl-toggle__input" id="newExcludeAccessories" type="checkbox" checked data-on="Включено" data-off="Выключено">
+              <span class="sl-toggle__track" aria-hidden="true">
+                <span class="sl-toggle__thumb"><span class="sl-toggle__dot"></span></span>
+              </span>
+            </span>
+          </div>
+
+          <button type="submit" class="btn btn-accent" style="margin-top: 4px;">
+            <span>Запустить радар</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Upsell state when radar limit is reached -->
+      <div id="radarSheetUpsell" class="hidden">
+        <div class="upsell">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="margin-inline: auto;"><path d="M11.6 3.3a.5.5 0 0 1 .8 0l2.9 5.5a1 1 0 0 0 1.5.3l4.3-3.6a.5.5 0 0 1 .8.5L19 16.2a1 1 0 0 1-1 .8H6a1 1 0 0 1-1-.8L2.1 6a.5.5 0 0 1 .8-.5l4.3 3.6a1 1 0 0 0 1.5-.3z"/><path d="M5 21h14"/></svg>
+          <h3 class="h3">Лимит радаров исчерпан</h3>
+          <p class="caption">На бесплатном тарифе доступен 1 радар. PRO открывает до 15 радаров, мгновенные уведомления и безлимитные оценки рынка.</p>
+          <button class="btn btn-accent" onclick="window.app.closeSheets(); window.app.switchTab('pro')">Перейти на PRO</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Scan Progress Modal Overlay -->
+  <!-- Sheet: lot details -->
+  <div id="sheetLot" class="sheet">
+    <div class="sheet-handle-bar"><div class="sheet-handle"></div></div>
+    <div class="sheet-content">
+      <div style="position: relative; margin-bottom: 16px; aspect-ratio: 16/10; border-radius: 14px; overflow: hidden; background: #0C0C0F; display: flex; align-items: center; justify-content: center;">
+        <img id="modalMainImg" src="" alt="" style="max-height: 260px; max-width: 100%; object-fit: contain;">
+      </div>
+
+      <div id="modalDealBadge" style="margin-bottom: 8px;"></div>
+      <div id="modalPriceDrop" style="margin-bottom: 8px;"></div>
+      <div id="modalPrice" class="mono" style="font-size: 26px; font-weight: 700; letter-spacing: -0.02em;"></div>
+      <div id="modalMarketPrice" class="lot-market" style="margin-bottom: 12px;"></div>
+      <div id="modalMarketAnalogs" class="market-analogs-row" style="margin-bottom: 12px;"></div>
+
+      <h2 id="modalTitle" class="h3" style="margin-bottom: 12px; line-height: 1.4;"></h2>
+
+      <div id="modalTags" style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px;"></div>
+
+      <div class="card" style="margin-bottom: 14px; padding: 14px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <div style="min-width: 0;">
+            <div id="modalSellerName" style="font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;"><span id="modalSellerNameText"></span><span id="modalSellerScore"></span></div>
+            <div id="modalSellerType" class="caption"></div>
+          </div>
+          <span id="modalSellerRating" class="badge-soft mono" style="color: var(--warn);">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span id="modalSellerRatingVal"></span>
+          </span>
+        </div>
+        <div style="border-top: 1px solid var(--border); margin-top: 10px; padding-top: 8px; display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-3);" class="mono">
+          <span id="modalLocation"></span>
+          <span id="modalDistance"></span>
+          <span id="modalDate"></span>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <div class="caption-dim" style="text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; margin-bottom: 6px;">Описание</div>
+        <div id="modalDescription" style="font-size: 13px; color: var(--text-2); line-height: 1.6; white-space: pre-wrap; background: #0C0C0F; padding: 14px; border-radius: 12px; border: 1px solid var(--border); max-height: 180px; overflow-y: auto;"></div>
+      </div>
+
+      <div class="btn-row">
+        <button id="modalAvitoCta" class="btn btn-accent" style="flex: 1.5;">
+          <span>Открыть на Авито</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </button>
+        <button id="modalTradeBtn" class="btn btn-ghost" style="flex: 1;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+          <span>Торг</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sheet: delete confirm -->
+  <div id="sheetDelete" class="sheet">
+    <div class="sheet-handle-bar"><div class="sheet-handle"></div></div>
+    <div class="sheet-content" style="text-align: center;">
+      <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#FBBF24" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="margin: 4px auto 12px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <h2 class="h2" style="margin-bottom: 6px;">Удалить этот радар?</h2>
+      <p class="caption" style="margin-bottom: 20px; line-height: 1.5;">Поиск «<b id="deleteSearchTitle" style="color: var(--text);"></b>» будет остановлен, мониторинг новых лотов прекратится.</p>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="window.app.closeSheets()">Отмена</button>
+        <button id="btnConfirmDelete" class="btn btn-danger">Да, удалить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scan progress modal -->
   <div id="scanProgressModal" class="scan-modal-overlay hidden">
     <div class="scan-modal-card">
       <div class="scan-radar-glow">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <circle cx="12" cy="12" r="6"/>
-          <circle cx="12" cy="12" r="2"/>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
         </svg>
       </div>
-
       <div class="scan-modal-title" id="scanModalTitle">Сканирование Авито</div>
-      <div class="scan-modal-sub font-mono" id="scanModalSub">Поиск свежих лотов...</div>
-
-      <div class="scan-track">
-        <div id="scanProgressBar" class="scan-bar" style="width: 15%;"></div>
-      </div>
-
-      <div class="scan-status-row font-mono">
-        <span id="scanStatusStepText" class="scan-status-step">Подключение к радару Avito...</span>
+      <div class="scan-modal-sub mono" id="scanModalSub">Поиск свежих лотов...</div>
+      <div class="scan-track"><div id="scanProgressBar" class="scan-bar" style="width: 15%;"></div></div>
+      <div class="scan-status-row mono">
+        <span id="scanStatusStepText">Подключение к радару Avito...</span>
         <span id="scanStatusPercent" class="scan-status-percent">15%</span>
       </div>
-
       <div class="scan-steps-pills">
-        <div class="scan-pill active" id="scanPill1"><span>1</span> Запрос</div>
-        <div class="scan-pill" id="scanPill2"><span>2</span> Парсинг</div>
-        <div class="scan-pill" id="scanPill3"><span>3</span> Цены</div>
-        <div class="scan-pill" id="scanPill4"><span>4</span> Финиш</div>
+        <div class="scan-pill active" id="scanPill1"><span>1</span>Запрос</div>
+        <div class="scan-pill" id="scanPill2"><span>2</span>Парсинг</div>
+        <div class="scan-pill" id="scanPill3"><span>3</span>Цены</div>
+        <div class="scan-pill" id="scanPill4"><span>4</span>Финиш</div>
       </div>
     </div>
   </div>
 
-  <!-- Application Controller -->
-  <script src="js/suggestions.js?v=3"></script>
-  <script src="js/app.js?v=11"></script>
+  <!-- App scripts (plain scripts: work over file:// and any static server) -->
+  <script src="js/suggestions.js?v=4"></script>
+  <script src="js/core.js?v=pro2"></script>
+  <script src="js/app.js?v=pro2"></script>
 </body>
 </html>
