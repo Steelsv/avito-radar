@@ -2360,6 +2360,7 @@ def start_healthcheck_server() -> None:
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.send_header("Access-Control-Allow-Origin", "*")
+                    self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
                     self.end_headers()
                     self.wfile.write(data)
                     return
@@ -2583,6 +2584,8 @@ def start_healthcheck_server() -> None:
                             self.send_response(200)
                             self.send_header("Content-Type", mime)
                             self.send_header("Access-Control-Allow-Origin", "*")
+                            if ext in (".js", ".css", ".html"):
+                                self.send_header("Cache-Control", "no-cache, must-revalidate")
                             self.end_headers()
                             self.wfile.write(data)
                             return
