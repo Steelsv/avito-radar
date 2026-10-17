@@ -1249,6 +1249,30 @@ input, select, textarea { font-family: var(--font-ui); color: var(--text); }
 }
 .address-clear-btn:active { color: var(--danger); border-color: var(--danger-border); }
 .address-error { font-size: 11px; color: var(--danger); line-height: 1.4; margin-bottom: 8px; }
+
+.address-locate-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+.address-locate-btn:hover { color: var(--accent); border-color: var(--accent-border); }
+.address-locate-btn:disabled { opacity: 0.55; pointer-events: none; }
+.address-locate-btn svg.rotating { animation: spin 0.9s linear infinite; }
+
+#feedSearchSelect, #feedSortSelect { text-overflow: ellipsis; white-space: nowrap; }
+#quietStart, #quietEnd { min-width: 86px; }
 .address-suggest {
   position: absolute;
   top: calc(100% + 6px);

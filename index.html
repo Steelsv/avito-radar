@@ -14,12 +14,11 @@
         tg.ready();
         const p = (tg.platform || '').toLowerCase();
         const isMobile = ['ios', 'android'].includes(p) || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        if (!isMobile && typeof tg.requestFullscreen === 'function') {
-          try { tg.requestFullscreen(); } catch (_) {}
-        }
-        try { tg.expand(); } catch (_) {}
-        if (typeof tg.disableVerticalSwipes === 'function') {
-          try { tg.disableVerticalSwipes(); } catch (_) {}
+        if (isMobile) {
+          try { tg.expand(); } catch (_) {}
+          if (typeof tg.disableVerticalSwipes === 'function') {
+            try { tg.disableVerticalSwipes(); } catch (_) {}
+          }
         }
       }
     } catch (_) {}
@@ -30,7 +29,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="css/styles.css?v=pro4">
+  <link rel="stylesheet" href="css/styles.css?v=pro5">
 </head>
 <body>
 
@@ -144,9 +143,9 @@
         </div>
       </div>
 
-      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-        <select id="feedSearchSelect" class="select mono" style="flex: 1.5; height: 38px; font-size: 12px;"></select>
-        <select id="feedSortSelect" class="select mono" style="flex: 1; height: 38px; font-size: 12px;">
+      <div style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+        <select id="feedSearchSelect" class="select mono" style="flex: 1 1 170px; min-width: 150px; max-width: 340px; height: 38px; font-size: 12px;"></select>
+        <select id="feedSortSelect" class="select mono" style="flex: 0 1 auto; min-width: 140px; height: 38px; font-size: 12px;">
           <option value="deal">По выгоде</option>
           <option value="cheap">Дешевле</option>
           <option value="expensive">Дороже</option>
@@ -417,7 +416,7 @@
 
   <!-- App scripts (plain scripts: work over file:// and any static server) -->
   <script src="js/suggestions.js?v=4"></script>
-  <script src="js/core.js?v=pro4"></script>
-  <script src="js/app.js?v=pro4"></script>
+  <script src="js/core.js?v=pro5"></script>
+  <script src="js/app.js?v=pro5"></script>
 </body>
 </html>

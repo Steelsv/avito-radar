@@ -389,6 +389,20 @@ Object.assign(ApiService, {
     }
   },
 
+  // Reverse geocoding. Returns { display_name, short, lat, lon } or null (404 / network).
+  async reverseAddress(lat, lon) {
+    const uid = getCurrentUserId();
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/address/reverse?user_id=${encodeURIComponent(uid)}&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, {
+        headers: getApiHeaders()
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      return null;
+    }
+  },
+
   // Best-effort quiet-hours update (POST /api/user/quiet_hours)
   async setQuietHours(enabled, start, end) {
     const uid = getCurrentUserId();
@@ -882,24 +896,13 @@ async function handleNewSearchSubmit(e) {
     State.currentSearchId = newSearch.id;
     if (State.user) State.user.radars_used = getRadarsUsage().used;
 
-    await ApiService.triggerScan(newSearch.id);
     await loadData();
-
-    let lotsCount = State.lots.filter(l => l.searchId === newSearch.id && !l.isDismissed).length;
-    if (lotsCount === 0) {
-      await new Promise(r => setTimeout(r, 2000));
-      await loadData();
-      lotsCount = State.lots.filter(l => l.searchId === newSearch.id && !l.isDismissed).length;
-    }
-
-    ScanProgress.finish(lotsCount);
-    TelegramService.haptic(lotsCount > 0 ? 'success' : 'medium');
-    switchTab(lotsCount > 0 ? 'feed' : 'radars');
-
-    if (lotsCount > 0) showToast(`Найдено ${lotsCount} лотов по «${q}»`, 'success');
-    else showToast(`Радар [${getCityAbbr(city)}] запущен`, 'success');
+    ScanProgress.finish(0);
+    TelegramService.haptic('success');
+    switchTab('radars');
+    showToast('Радар создан, первый скан идет', 'success');
   } catch (err) {
-    console.error('Search creation/scan failed:', err);
+    console.error('Search creation failed:', err);
     ScanProgress.finish(0);
     showToast('Ошибка при запуске радара', 'error');
   }
@@ -1482,6 +1485,10 @@ function createFeedCard(lot) {
 
 // Swipe-left to vanish (same mechanics as the legacy build)
 function attachSwipeToCard(card, lot) {
+  // Desktop without a touchscreen: no swipe gestures, keep mouse wheel untouched.
+  const hasTouch = 'ontouchstart' in window || (navigator.maxTouchPoints || 0) > 0;
+  if (document.body.classList.contains('platform-desktop') && !hasTouch) return;
+
   let startX = 0;
   let startY = 0;
   let currentX = 0;
@@ -1855,7 +1862,10 @@ function renderPro() {
           <span class="input-icon">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
           </span>
-          <input type="text" id="addressInput" class="input" placeholder="Город, улица, дом" autocomplete="off" enterkeyhint="done" value="${escapeHtml(hasAddress ? u.home_address : '')}">
+          <input type="text" id="addressInput" class="input" placeholder="Город, улица, дом" autocomplete="off" enterkeyhint="done" style="padding-right: 44px;" value="${escapeHtml(hasAddress ? u.home_address : '')}">
+          <button type="button" class="address-locate-btn" id="btnDetectAddress" title="Определить автоматически" aria-label="Определить адрес автоматически" onclick="window.app.detectAddress()">
+            <svg id="detectAddressIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
+          </button>
           <div id="addressSuggest" class="address-suggest hidden"></div>
         </div>
         <div id="addressError" class="address-error ${State.addressError ? '' : 'hidden'}">${escapeHtml(State.addressError)}</div>
@@ -2050,7 +2060,7 @@ function initAddressSuggest() {
   }
 }
 
-async function saveAddress(selected) {
+async function saveAddress(selected, silent) {
   const input = $('addressInput');
   if (!input || State.addressSaving) return;
 
@@ -2088,7 +2098,7 @@ async function saveAddress(selected) {
     State.user.home_address = r.display_name || (typeof payload === 'object' ? payload.display_name : payload);
     AddressSuggest.close();
     TelegramService.haptic('success');
-    showToast('Адрес сохранен', 'success');
+    showToast(silent ? 'Адрес определен автоматически' : 'Адрес сохранен', 'success');
     renderPro();
   } else {
     State.addressError = (r && r.message) || 'Сервер недоступен';
@@ -2127,6 +2137,92 @@ function editAddress() {
   State.addressError = '';
   renderPro();
   $('addressInput')?.focus();
+}
+
+function setDetectAddressLoading(loading) {
+  const btn = $('btnDetectAddress');
+  const icon = $('detectAddressIcon');
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.classList.toggle('is-loading', loading);
+  if (icon) icon.classList.toggle('rotating', loading);
+}
+
+function getTelegramLocation() {
+  return new Promise((resolve) => {
+    const tg = window.Telegram?.WebApp;
+    const lm = tg?.LocationManager;
+    if (!tg || !lm || typeof lm.getLocation !== 'function') return resolve(null);
+    let settled = false;
+    const done = (res) => { if (!settled) { settled = true; resolve(res); } };
+    const timer = setTimeout(() => done(null), 10000);
+    try {
+      if (typeof lm.init === 'function') {
+        try { lm.init(); } catch (_) {}
+      }
+      lm.getLocation((res) => {
+        clearTimeout(timer);
+        if (!res) return done(null);
+        const lat = Number(res.latitude ?? res.lat);
+        const lon = Number(res.longitude ?? res.lon);
+        done(Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null);
+      });
+    } catch (_) {
+      clearTimeout(timer);
+      done(null);
+    }
+  });
+}
+
+function getBrowserLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation?.getCurrentPosition) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
+  });
+}
+
+async function detectAddress() {
+  if (State.addressSaving) return;
+  TelegramService.haptic('light');
+  setDetectAddressLoading(true);
+
+  try {
+    let coords = await getTelegramLocation();
+    let denied = false;
+    if (!coords) {
+      const browser = await getBrowserLocation();
+      if (browser) {
+        coords = browser;
+      } else {
+        denied = true;
+      }
+    }
+
+    if (!coords) {
+      TelegramService.haptic('error');
+      showToast(denied
+        ? 'Разрешите доступ к геолокации в настройках Telegram'
+        : 'Не удалось определить адрес - введите вручную', 'error');
+      return;
+    }
+
+    const rev = await ApiService.reverseAddress(coords.lat, coords.lon);
+    if (!rev || !rev.display_name) {
+      TelegramService.haptic('error');
+      showToast('Не удалось определить адрес - введите вручную', 'error');
+      return;
+    }
+
+    const input = $('addressInput');
+    if (input) input.value = rev.display_name;
+    await saveAddress({ lat: rev.lat, lon: rev.lon, display_name: rev.display_name }, true);
+  } finally {
+    setDetectAddressLoading(false);
+  }
 }
 
 function goToAddress() {
@@ -2419,6 +2515,7 @@ Object.assign(window.app, {
   saveAddress,
   clearAddress,
   editAddress,
+  detectAddress,
   goToAddress,
   dismissAddressHint,
   onQuietChange,
